@@ -231,12 +231,24 @@ export interface EventLogEntry {
   droneId?: string;
 }
 
-// 8. Global State Envelope
+// 8. Navigation Destinations
+export type NavigationSection = 
+  | 'overview' 
+  | 'monitoring' 
+  | 'geographic' 
+  | 'incidents' 
+  | 'drones' 
+  | 'analytics' 
+  | 'configuration' 
+  | 'event-log';
+
+// 9. Global State Envelope
 export interface ApplicationState {
   simulationRunning: boolean;
   simulationSpeed: number;
   activeScenario: SimulationScenarioId;
   lastTickTimestamp: string;
+  activeSection: NavigationSection;
   villages: Record<VillageId, Village>;
   sensorNodes: Record<string, SensorNode>;
   drones: Record<string, Drone>;
@@ -249,3 +261,4 @@ export interface ApplicationState {
   selectedIncidentId: string | null;
   selectedDroneId: string | null;
 }
+
