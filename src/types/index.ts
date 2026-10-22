@@ -108,6 +108,8 @@ export interface SensorNode {
   district: DistrictName;
   coordinates: Coordinates;
   status: NodeOperationalStatus;
+  isStale?: boolean;
+  lastSuccessfulTransmission?: string;
   lastUpdated: string;
   sensors: NodeSensors;
   riskScore: number;
@@ -118,6 +120,7 @@ export interface SensorNode {
   batteryLevel: number; // percentage (0 - 100)
   history: HistoricalDataPoint[];
 }
+
 
 // 4. Threshold Configuration Model
 export interface ThresholdConfig {

@@ -1,8 +1,8 @@
-import React, { createContext, useState, useEffect } from 'react';
-
-import type { ApplicationState, NavigationSection, VillageId, SimulationScenarioId } from '../types';
-
+import React, { createContext, useState, useEffect, useRef, useCallback } from 'react';
+import type { ApplicationState, NavigationSection, VillageId, SimulationScenarioId, SensorNode } from '../types';
 import { INITIAL_APPLICATION_STATE } from '../constants/initialState';
+import { stepNormalNode, applyScenarioToNodes, updateVillagesFromNodes } from '../services/simulationEngine';
+import { calculateNodeRisk } from '../services/riskEngine';
 
 const STORAGE_KEY = 'BIHAR_DRONE_RESCUE_STATE_V1';
 
@@ -16,7 +16,8 @@ interface NetworkContextValue {
   selectNode: (id: string | null) => void;
   selectIncident: (id: string | null) => void;
   selectDrone: (id: string | null) => void;
-  setScenario: (scenario: SimulationScenarioId) => void;
+  setScenario: (scenario: SimulationScenarioId, targetNodeId?: string) => void;
+  toggleNodeOffline: (nodeId: string) => void;
   acknowledgeIncident: (incidentId: string) => void;
   resolveIncident: (incidentId: string, notes?: string) => void;
 }
@@ -29,12 +30,10 @@ export const NetworkProvider: React.FC<{ children: React.ReactNode }> = ({ child
       const saved = localStorage.getItem(STORAGE_KEY);
       if (saved) {
         const parsed = JSON.parse(saved);
-        // Verify key integrity
         if (parsed.villages && parsed.sensorNodes && parsed.drones) {
           return {
             ...parsed,
-            // default simulation to paused upon load for stability
-            simulationRunning: false,
+            simulationRunning: false, // Default paused on fresh load for safety
             activeSection: 'overview',
           };
         }
@@ -45,6 +44,12 @@ export const NetworkProvider: React.FC<{ children: React.ReactNode }> = ({ child
     return INITIAL_APPLICATION_STATE;
   });
 
+  const stateRef = useRef(state);
+  useEffect(() => {
+    stateRef.current = state;
+  }, [state]);
+
+
   // Save changes to localStorage
   useEffect(() => {
     try {
@@ -53,6 +58,68 @@ export const NetworkProvider: React.FC<{ children: React.ReactNode }> = ({ child
       console.error('Failed to persist network state to localStorage', e);
     }
   }, [state]);
+
+  /**
+   * Central Simulation Clock Tick
+   * Runs only when simulationRunning is true.
+   * Updates sensor nodes smoothly, evaluates risks, updates village aggregates,
+   * while keeping existing incidents and drone missions intact.
+   */
+  const handleSimulationTick = useCallback(() => {
+    const currentState = stateRef.current;
+    if (!currentState.simulationRunning) return;
+
+    const timestamp = new Date().toISOString();
+    const thresholds = currentState.thresholds;
+    const currentNodes = currentState.sensorNodes;
+    const updatedNodes: Record<string, SensorNode> = {};
+
+    Object.keys(currentNodes).forEach((id) => {
+      const node = currentNodes[id];
+
+      // If a scenario forced an anomaly or offline, let it persist or gently fluctuate
+      let steppedNode = stepNormalNode(node, thresholds, timestamp);
+
+      // Recalculate transparent risk based on new values
+      const riskResult = calculateNodeRisk(steppedNode, thresholds);
+      steppedNode = {
+        ...steppedNode,
+        riskScore: riskResult.score,
+        riskLevel: riskResult.level,
+        contributingFactors: riskResult.contributingFactors,
+      };
+
+      updatedNodes[id] = steppedNode;
+    });
+
+    const updatedVillages = updateVillagesFromNodes(currentState.villages, updatedNodes, timestamp);
+
+    setState((prev) => ({
+      ...prev,
+      lastTickTimestamp: timestamp,
+      sensorNodes: updatedNodes,
+      villages: updatedVillages,
+      // Drones, missions, and incidents remain intact
+    }));
+  }, []);
+
+  // Timer loop with speed control and leak prevention
+  useEffect(() => {
+    if (!state.simulationRunning) return;
+
+    const intervalMs = Math.max(
+      500,
+      Math.round(state.thresholds.simulationIntervalMs / state.simulationSpeed)
+    );
+
+    const timer = setInterval(() => {
+      handleSimulationTick();
+    }, intervalMs);
+
+    return () => {
+      clearInterval(timer);
+    };
+  }, [state.simulationRunning, state.simulationSpeed, state.thresholds.simulationIntervalMs, handleSimulationTick]);
 
   const setActiveSection = (section: NavigationSection) => {
     setState((prev) => ({ ...prev, activeSection: section }));
@@ -98,8 +165,67 @@ export const NetworkProvider: React.FC<{ children: React.ReactNode }> = ({ child
     setState((prev) => ({ ...prev, selectedDroneId: id }));
   };
 
-  const setScenario = (scenario: SimulationScenarioId) => {
-    setState((prev) => ({ ...prev, activeScenario: scenario }));
+  const setScenario = (scenario: SimulationScenarioId, targetNodeId: string = 'BIH-SIT-001') => {
+    setState((prev) => {
+      const timestamp = new Date().toISOString();
+      const mutatedNodes = applyScenarioToNodes(scenario, prev.sensorNodes, prev.thresholds, targetNodeId, timestamp);
+
+      // Recalculate risks for mutated nodes
+      const evaluatedNodes: Record<string, SensorNode> = {};
+      Object.keys(mutatedNodes).forEach((id) => {
+        const node = mutatedNodes[id];
+        const risk = calculateNodeRisk(node, prev.thresholds);
+        evaluatedNodes[id] = {
+          ...node,
+          riskScore: risk.score,
+          riskLevel: risk.level,
+          contributingFactors: risk.contributingFactors,
+        };
+      });
+
+      const updatedVillages = updateVillagesFromNodes(prev.villages, evaluatedNodes, timestamp);
+
+      return {
+        ...prev,
+        activeScenario: scenario,
+        lastTickTimestamp: timestamp,
+        sensorNodes: evaluatedNodes,
+        villages: updatedVillages,
+      };
+    });
+  };
+
+  const toggleNodeOffline = (nodeId: string) => {
+    setState((prev) => {
+      const node = prev.sensorNodes[nodeId];
+      if (!node) return prev;
+      const isNowOffline = node.status !== 'OFFLINE';
+      const timestamp = new Date().toISOString();
+
+      const updatedNode: SensorNode = {
+        ...node,
+        status: isNowOffline ? 'OFFLINE' : 'ONLINE',
+        isStale: isNowOffline,
+        signalQuality: isNowOffline ? 0 : 92,
+        latencyMs: isNowOffline ? 9999 : 45,
+        lastUpdated: timestamp,
+        lastSuccessfulTransmission: isNowOffline ? node.lastSuccessfulTransmission : timestamp,
+      };
+
+      const risk = calculateNodeRisk(updatedNode, prev.thresholds);
+      updatedNode.riskScore = risk.score;
+      updatedNode.riskLevel = risk.level;
+      updatedNode.contributingFactors = risk.contributingFactors;
+
+      const updatedNodes = { ...prev.sensorNodes, [nodeId]: updatedNode };
+      const updatedVillages = updateVillagesFromNodes(prev.villages, updatedNodes, timestamp);
+
+      return {
+        ...prev,
+        sensorNodes: updatedNodes,
+        villages: updatedVillages,
+      };
+    });
   };
 
   const acknowledgeIncident = (incidentId: string) => {
@@ -152,6 +278,7 @@ export const NetworkProvider: React.FC<{ children: React.ReactNode }> = ({ child
         selectIncident,
         selectDrone,
         setScenario,
+        toggleNodeOffline,
         acknowledgeIncident,
         resolveIncident,
       }}
@@ -162,4 +289,3 @@ export const NetworkProvider: React.FC<{ children: React.ReactNode }> = ({ child
 };
 
 export { NetworkContext };
-
