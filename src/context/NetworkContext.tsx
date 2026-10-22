@@ -1,8 +1,10 @@
 import React, { createContext, useState, useEffect, useRef, useCallback } from 'react';
-import type { ApplicationState, NavigationSection, VillageId, SimulationScenarioId, SensorNode } from '../types';
+import type { ApplicationState, NavigationSection, VillageId, SimulationScenarioId, SensorNode, ThresholdConfig } from '../types';
+
 import { INITIAL_APPLICATION_STATE } from '../constants/initialState';
 import { stepNormalNode, applyScenarioToNodes, updateVillagesFromNodes } from '../services/simulationEngine';
 import { calculateNodeRisk } from '../services/riskEngine';
+import { processAlertsForNodes } from '../services/alertService';
 
 const STORAGE_KEY = 'BIHAR_DRONE_RESCUE_STATE_V1';
 
@@ -20,7 +22,10 @@ interface NetworkContextValue {
   toggleNodeOffline: (nodeId: string) => void;
   acknowledgeIncident: (incidentId: string) => void;
   resolveIncident: (incidentId: string, notes?: string) => void;
+  addIncidentNote: (incidentId: string, note: string) => void;
+  updateThresholds: (thresholds: Partial<ThresholdConfig>) => void;
 }
+
 
 const NetworkContext = createContext<NetworkContextValue | null>(null);
 
@@ -94,14 +99,27 @@ export const NetworkProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
     const updatedVillages = updateVillagesFromNodes(currentState.villages, updatedNodes, timestamp);
 
+    // Process threshold alerts and update deduplicated incidents
+    const { updatedIncidents, newLogs } = processAlertsForNodes(
+      updatedNodes,
+      updatedVillages,
+      currentState.incidents,
+      thresholds,
+      currentState.drones,
+      timestamp
+    );
+
     setState((prev) => ({
       ...prev,
       lastTickTimestamp: timestamp,
       sensorNodes: updatedNodes,
       villages: updatedVillages,
-      // Drones, missions, and incidents remain intact
+      incidents: updatedIncidents,
+      eventLogs: newLogs.length > 0 ? [...newLogs, ...prev.eventLogs] : prev.eventLogs,
+      // Drones and missions remain intact
     }));
   }, []);
+
 
   // Timer loop with speed control and leak prevention
   useEffect(() => {
@@ -185,15 +203,27 @@ export const NetworkProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
       const updatedVillages = updateVillagesFromNodes(prev.villages, evaluatedNodes, timestamp);
 
+      const { updatedIncidents, newLogs } = processAlertsForNodes(
+        evaluatedNodes,
+        updatedVillages,
+        prev.incidents,
+        prev.thresholds,
+        prev.drones,
+        timestamp
+      );
+
       return {
         ...prev,
         activeScenario: scenario,
         lastTickTimestamp: timestamp,
         sensorNodes: evaluatedNodes,
         villages: updatedVillages,
+        incidents: updatedIncidents,
+        eventLogs: newLogs.length > 0 ? [...newLogs, ...prev.eventLogs] : prev.eventLogs,
       };
     });
   };
+
 
   const toggleNodeOffline = (nodeId: string) => {
     setState((prev) => {
@@ -260,9 +290,40 @@ export const NetworkProvider: React.FC<{ children: React.ReactNode }> = ({ child
             updatedAt: new Date().toISOString(),
             operatorNotes: notes ? [...incident.operatorNotes, notes] : incident.operatorNotes,
           },
+
         },
       };
     });
+  };
+
+
+  const addIncidentNote = (incidentId: string, note: string) => {
+
+    setState((prev) => {
+      const incident = prev.incidents[incidentId];
+      if (!incident) return prev;
+      return {
+        ...prev,
+        incidents: {
+          ...prev.incidents,
+          [incidentId]: {
+            ...incident,
+            operatorNotes: [...incident.operatorNotes, note],
+            updatedAt: new Date().toISOString(),
+          },
+        },
+      };
+    });
+  };
+
+  const updateThresholds = (newThresholds: Partial<ThresholdConfig>) => {
+    setState((prev) => ({
+      ...prev,
+      thresholds: {
+        ...prev.thresholds,
+        ...newThresholds,
+      },
+    }));
   };
 
   return (
@@ -281,11 +342,14 @@ export const NetworkProvider: React.FC<{ children: React.ReactNode }> = ({ child
         toggleNodeOffline,
         acknowledgeIncident,
         resolveIncident,
+        addIncidentNote,
+        updateThresholds,
       }}
     >
       {children}
     </NetworkContext.Provider>
   );
+
 };
 
 export { NetworkContext };

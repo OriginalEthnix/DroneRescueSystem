@@ -181,11 +181,15 @@ export interface Incident {
   contributingConditions: string[];
   recommendedResponse: string;
   status: IncidentStatus;
+  dispatchEligible: boolean;
+  priorityScore: number;
+  priorityExplanation: string;
   assignedDroneId: string | null;
   assignedMissionId: string | null;
   verificationOutcome: VerificationOutcome | null;
   operatorNotes: string[];
 }
+
 
 // 6. Drone Operations Model
 export interface Drone {

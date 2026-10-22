@@ -4,7 +4,9 @@ import { Sidebar } from './components/layout/Sidebar';
 import { TopBar } from './components/layout/TopBar';
 import { OverviewPage } from './components/overview/OverviewPage';
 import { LiveMonitoringPage } from './components/monitoring/LiveMonitoringPage';
+import { IncidentManagementPage } from './components/incidents/IncidentManagementPage';
 import { SectionPlaceholder } from './components/common/SectionPlaceholder';
+
 
 export const AppContent: React.FC = () => {
   const { state } = useNetwork();
@@ -32,20 +34,8 @@ export const AppContent: React.FC = () => {
           />
         );
       case 'incidents':
-        return (
-          <SectionPlaceholder
-            sectionKey="incidents"
-            title="Incident Management & Alert Triage"
-            subtitle="Centralized register of threshold-triggered events, risk scores, and operator action workflows."
-            milestone="Scheduled: Session 4"
-            plannedFeatures={[
-              'Sortable and filterable incident table (ID, Village, Node, Severity, Risk, Status)',
-              'Acknowledge and Resolve incident operator workflows',
-              'One-click [DISPATCH DRONE] action for critical/eligible alerts',
-              'Historical incident notes and aerial verification records'
-            ]}
-          />
-        );
+        return <IncidentManagementPage />;
+
       case 'drones':
         return (
           <SectionPlaceholder
