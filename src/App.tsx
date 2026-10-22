@@ -4,8 +4,10 @@ import { Sidebar } from './components/layout/Sidebar';
 import { TopBar } from './components/layout/TopBar';
 import { OverviewPage } from './components/overview/OverviewPage';
 import { LiveMonitoringPage } from './components/monitoring/LiveMonitoringPage';
+import { GeographicIntelligencePage } from './components/map/GeographicIntelligencePage';
 import { IncidentManagementPage } from './components/incidents/IncidentManagementPage';
 import { SectionPlaceholder } from './components/common/SectionPlaceholder';
+
 
 
 export const AppContent: React.FC = () => {
@@ -18,21 +20,8 @@ export const AppContent: React.FC = () => {
       case 'monitoring':
         return <LiveMonitoringPage />;
       case 'geographic':
-        return (
-          <SectionPlaceholder
-            sectionKey="geographic"
-            title="Geographic Intelligence & Bihar Mapping"
-            subtitle="Geospatial monitoring of Bihar villages, sensor locations, drone base, and flight paths."
-            milestone="Scheduled: Session 3"
-            plannedFeatures={[
-              'Interactive Leaflet map centered on North Bihar (Darbhanga, Sitamarhi, Madhubani)',
-              'Sensor node geospatial markers with live status badges',
-              'Regional Drone Base marker with active telemetry',
-              'Real-time animated drone flight route progression and waypoint tracking',
-              'Hazard-affected monitoring zones with color-coded alerts'
-            ]}
-          />
-        );
+        return <GeographicIntelligencePage />;
+
       case 'incidents':
         return <IncidentManagementPage />;
 

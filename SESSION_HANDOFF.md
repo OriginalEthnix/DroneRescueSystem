@@ -1,73 +1,67 @@
-# SESSION HANDOFF — SESSION 3: RISK ENGINE, ALERTS, AND INCIDENT MANAGEMENT
+# SESSION HANDOFF — SESSION 4: GEOGRAPHIC INTELLIGENCE AND INTERACTIVE MAP
 
 ## 1. Project Overview & Milestone Status
-- **Milestone Completed:** Session 3 — Pure Risk Engine, Deduplicating Alert Service, and Interactive Incident Management System.
-- **Framework & Tooling:** React 19, Vite 8, TypeScript 6, Tailwind CSS v4, Vitest 5, Lucide React, Leaflet, Recharts.
+- **Milestone Completed:** Session 4 — Geographic Intelligence & Interactive Bihar Leaflet Map.
+- **Framework & Tooling:** React 19, Vite 8, TypeScript 6, Tailwind CSS v4, Vitest 5, Leaflet 1.9, React-Leaflet 5, CartoDB Dark Matter / OpenStreetMap, Lucide React.
 - **Verification Status:**
-  - `npx vitest run`: 9/9 automated tests passing across 2 test suites (100% test pass rate).
+  - `npx vitest run`: 12/12 automated unit tests passing across 3 test suites (100% test pass rate).
   - `npm run lint`: 0 errors, 0 warnings (`oxlint`).
-  - `npm run build`: Production bundle built cleanly (309 kB JS / 62 kB CSS).
+  - `npm run build`: Production bundle built cleanly (486 kB JS / 65 kB CSS).
 
 ---
 
-## 2. Completed Work in Session 3
+## 2. Completed Work in Session 4
 
-### A. Transparent Deterministic Risk Engine ([src/services/riskEngine.ts](file:///c:/Users/DELL/Desktop/Drone%20Rescue%20System/src/services/riskEngine.ts))
-1. **0–100 Clamped Normalized Score:**
-   - Evaluates all five sensor dimensions (Temperature, Humidity, LiDAR Distance, Structural Vibration, and Motion) against configured boundaries.
-   - Categorical bounds: NORMAL (0–29), WARNING (30–59), HIGH RISK (60–79), and CRITICAL (80–100).
-2. **Explicit Critical Rules:**
-   - Isolated Critical LiDAR proximity (<= 1.5m) or Critical Vibration (>= 0.30g) immediately triggers high/critical alert scores even when temperature is completely normal.
-3. **Multi-Anomaly Compounding:**
-   - When 2 or more sensors report simultaneous anomalies, a multi-sensor compounding multiplier (1.25x) is applied.
-4. **Explainable Contributing Factors:**
-   - Computes an array of human-readable diagnostic strings (`contributingFactors`) that explain exactly which thresholds were violated and which rules were activated.
-5. **Clear Separation of Concepts:**
-   - Keeps Sensor Status, Risk Score (0–100), Alert Severity (INFO/WARNING/CRITICAL), and Recommended Response as distinct, non-interchangeable fields.
+### A. North Bihar Geographic Service ([src/services/geographicService.ts](file:///c:/Users/DELL/Desktop/Drone%20Rescue%20System/src/services/geographicService.ts))
+1. **Haversine Great-Circle Distance Engine (`calculateHaversineDistanceKm`):**
+   - Accurately computes distances between the Regional Drone Base at Darbhanga Airport (`26.1950° N, 85.9140° E`) and the three monitored North Bihar sectors:
+     - Darbhanga (Village A): ~7.5 km.
+     - Sitamarhi (Village B): ~65.2 km.
+     - Madhubani (Village C): ~23.8 km.
+2. **Flight Waypoint Interpolation (`generateFlightWaypoints`):**
+   - Generates sequential coordinates along the aerial flight corridor ready for animated drone tracking.
+3. **Flight ETA Calculator (`calculateFlightEtaMinutes`):**
+   - Projects realistic flight arrival durations based on drone cruising speed (e.g. 65 km/h).
 
-### B. Alert Service & Deduplicating Incident Lifecycle ([src/services/alertService.ts](file:///c:/Users/DELL/Desktop/Drone%20Rescue%20System/src/services/alertService.ts))
-1. **Incident Data Model & Unique Identifiers:**
-   - Unique IDs formatted as `INC-2026-XXX`.
-   - Records village name, district, node ID, triggering sensor, triggering value, threshold breached, risk score, priority ranking, and recommended response.
-2. **Strict Deduplication:**
-   - Ongoing continuous violations for the same node refresh the existing active incident without creating duplicates.
-3. **Genuinely Recurred Incidents:**
-   - When an operator explicitly marks an incident as `RESOLVED`, any subsequent or persistent violation creates a new incident ID while preserving the resolved record in history.
-4. **Automated Priority Scoring:**
-   - Combines risk score, alert severity (+50 for CRITICAL, +20 for WARNING), incident age (+2 per minute past 5m), and available drone sortie capacity into a single priority ranking.
-5. **Drone Dispatch Eligibility:**
-   - Flagged automatically when severity is `CRITICAL` or risk score meets/exceeds `droneDispatchThreshold` (>= 60).
+### B. Interactive Leaflet Map Engine ([src/components/map/LeafletMapView.tsx](file:///c:/Users/DELL/Desktop/Drone%20Rescue%20System/src/components/map/LeafletMapView.tsx) & [src/components/map/mapUtils.ts](file:///c:/Users/DELL/Desktop/Drone%20Rescue%20System/src/components/map/mapUtils.ts))
+1. **Dark Tile Layer:**
+   - Integrated CartoDB Dark Matter accessible OpenStreetMap tiles with attribution.
+2. **Visual Distinction by Status:**
+   - **Village Markers:** Circular status halos (Emerald for Normal, Amber for Warning, Red with animated ping for Critical).
+   - **Sensor Node Markers:** Color-coded square beacons displaying node ID and status.
+   - **Regional Drone Base:** Aviation hub marker stationed at Darbhanga Command Base.
+   - **Active Reconnaissance UAVs:** In-flight animated markers with live battery, speed, and mission status readouts.
+   - **Affected Monitoring Zones:** Circular geospatial hazard circles (5 km–7.5 km radius) color-coded to sector risk.
+   - **Mission Flight Polylines:** Dashed cyan trajectories connecting the base to target villages.
+3. **Accessible Information Labels:**
+   - All map markers contain readable text badges and operational status tags in addition to colors.
+   - Coordinates are clearly and prominently labeled as **approximate simulation coordinates** within Darbhanga, Sitamarhi, and Madhubani.
+4. **Smooth Flying Camera:**
+   - `MapViewController` uses `map.flyTo` to smoothly pan and zoom to any selected village (zoom 11) or sensor node (zoom 13).
 
-### C. Incident Management UI ([src/components/incidents/IncidentManagementPage.tsx](file:///c:/Users/DELL/Desktop/Drone%20Rescue%20System/src/components/incidents/IncidentManagementPage.tsx))
-1. **Filterable & Sortable Table:**
-   - Filter by severity (`ALL`, `CRITICAL`, `WARNING`), status (`ACTIVE`, `ACKNOWLEDGED`, `RESOLVED`), and text search.
-   - Dynamic sorting by Priority Score, Risk Score, and Detection Time.
-2. **Operator Workflows:**
-   - **Acknowledge Alert:** Changes status from `ACTIVE` to `ACKNOWLEDGED`.
-   - **Dispatch Drone:** Direct shortcut to Drone Operations with pre-selected village context.
-   - **Resolve Incident:** Prompts for operator verification notes and transitions status to `RESOLVED` (never automatically cleared).
-   - **Add Investigation Notes:** Modal allows continuous logging of operational notes.
-   - **Locate on Map:** One-click transition to Geographic Intelligence.
-
----
-
-## 3. Automated Test Verification ([src/services/__tests__/alertService.test.ts](file:///c:/Users/DELL/Desktop/Drone%20Rescue%20System/src/services/__tests__/alertService.test.ts))
-Executed via `npx vitest run`:
-- `keeps normal baseline nodes within NORMAL risk (0-29)` — PASSED
-- `immediately elevates isolated Critical LiDAR proximity (< 1.5m) to CRITICAL risk` — PASSED
-- `immediately elevates isolated Critical Vibration (>= 0.30g) to elevated risk with factors` — PASSED
-- `creates an incident when threshold is crossed and deduplicates on subsequent ticks` — PASSED
-- `permits a new incident when a previously resolved condition recurs` — PASSED
+### C. Geographic Intelligence Command UI ([src/components/map/GeographicIntelligencePage.tsx](file:///c:/Users/DELL/Desktop/Drone%20Rescue%20System/src/components/map/GeographicIntelligencePage.tsx))
+1. **Dual Map Modes (Tile Layer & Offline Vector Schematic Fallback):**
+   - Allows operators to switch between live CartoDB Dark OpenStreetMap tiles and an offline vector schematic fallback canvas to guarantee graceful operation when external map tiles cannot be fetched.
+2. **Interactive Map Legend:**
+   - Complete visual legend explaining all marker symbols, risk color cutoffs (<30 Normal, 30–59 Warning, >=60 Critical), drone base, and stale offline indicators.
+3. **Integrated Sector Inspector Panel:**
+   - Village selector tabs.
+   - Detailed sector risk index, primary concern breakdown, distance from drone hub, live associated sensor node statuses, and active sector alert cards.
+   - Direct shortcuts to Live Sensor Telemetry and Drone Operations.
 
 ---
 
-## 4. Next Steps for Session 4
-1. **Interactive Geographic Bihar Leaflet Map (`src/components/map/BiharMap.tsx`):**
-   - High-contrast dark tile map centered on North Bihar.
-   - Interactive village markers, sensor node markers, regional drone base at Darbhanga Airport.
-   - Pulsing incident halos and animated drone flight paths.
-2. **Autonomous Drone Operations System (`src/components/drones/DroneOperationsPage.tsx` & `src/services/droneMissionService.ts`):**
-   - Real-time fleet cards for `DRONE-01` and `DRONE-02`.
-   - Dispatch Confirmation Modal displaying target village, estimated distance, ETA, battery checks, and priority.
-   - 10-stage mission state machine (`MISSION_ASSIGNED`, `PRE_FLIGHT_CHECK`, `TAKEOFF`, `EN_ROUTE`, `APPROACHING_TARGET`, `ARRIVED`, `AERIAL_VERIFICATION`, `MISSION_COMPLETE`, `RETURNING_TO_BASE`).
-   - Simulated aerial verification outcome generator (`HAZARD_CONFIRMED`, `HAZARD_NOT_CONFIRMED`, `FURTHER_INVESTIGATION_REQUIRED`).
+## 3. Automated Test Verification ([src/services/__tests__/geographicService.test.ts](file:///c:/Users/DELL/Desktop/Drone%20Rescue%20System/src/services/__tests__/geographicService.test.ts))
+- `calculates realistic distances from Regional Drone Base to North Bihar villages` — PASSED
+- `generates smooth sequential waypoints along the flight corridor` — PASSED
+- `calculates plausible flight ETAs based on drone cruising speed` — PASSED
+
+---
+
+## 4. Next Steps for Session 5
+1. **Autonomous Drone Operations Center (`src/components/drones/DroneOperationsPage.tsx` & `src/services/droneMissionService.ts`):**
+   - Interactive Dispatch Confirmation Modal displaying target village, estimated distance, ETA, battery status check, and mission priority.
+   - 10-stage mission state machine: `AVAILABLE` → `MISSION_ASSIGNED` → `PRE_FLIGHT_CHECK` → `TAKEOFF` → `EN_ROUTE` → `APPROACHING_TARGET` → `ARRIVED` → `AERIAL_VERIFICATION` → `MISSION_COMPLETE` → `RETURNING_TO_BASE`.
+   - Simulated Aerial Verification outcome generator (`HAZARD_CONFIRMED`, `HAZARD_NOT_CONFIRMED`, `FURTHER_INVESTIGATION_REQUIRED`).
+   - Mission cancellation before takeoff and return-to-base safely mid-flight.
+   - Fleet cards for `DRONE-01` (`AeroScout-Alpha`) and `DRONE-02` (`AeroScout-Bravo`).
