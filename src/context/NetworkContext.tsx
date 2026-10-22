@@ -1,10 +1,20 @@
 import React, { createContext, useState, useEffect, useRef, useCallback } from 'react';
-import type { ApplicationState, NavigationSection, VillageId, SimulationScenarioId, SensorNode, ThresholdConfig } from '../types';
+import type { ApplicationState, NavigationSection, VillageId, SimulationScenarioId, SensorNode, ThresholdConfig, EventLogEntry } from '../types';
+
+
 
 import { INITIAL_APPLICATION_STATE } from '../constants/initialState';
 import { stepNormalNode, applyScenarioToNodes, updateVillagesFromNodes } from '../services/simulationEngine';
 import { calculateNodeRisk } from '../services/riskEngine';
 import { processAlertsForNodes } from '../services/alertService';
+import { 
+  selectBestAvailableDrone, 
+  createDroneMission, 
+  stepDroneMission, 
+  abortOrReturnDroneMission 
+} from '../services/droneMissionService';
+import { calculateHaversineDistanceKm } from '../services/geographicService';
+
 
 const STORAGE_KEY = 'BIHAR_DRONE_RESCUE_STATE_V1';
 
@@ -17,14 +27,22 @@ interface NetworkContextValue {
   selectVillage: (id: VillageId | null) => void;
   selectNode: (id: string | null) => void;
   selectIncident: (id: string | null) => void;
+
   selectDrone: (id: string | null) => void;
   setScenario: (scenario: SimulationScenarioId, targetNodeId?: string) => void;
+
   toggleNodeOffline: (nodeId: string) => void;
   acknowledgeIncident: (incidentId: string) => void;
+
   resolveIncident: (incidentId: string, notes?: string) => void;
   addIncidentNote: (incidentId: string, note: string) => void;
+
   updateThresholds: (thresholds: Partial<ThresholdConfig>) => void;
+  dispatchDrone: (incidentId: string, droneId?: string) => boolean;
+  abortMission: (missionId: string) => void;
+  advanceMission: (missionId: string) => void;
 }
+
 
 
 const NetworkContext = createContext<NetworkContextValue | null>(null);
@@ -109,16 +127,50 @@ export const NetworkProvider: React.FC<{ children: React.ReactNode }> = ({ child
       timestamp
     );
 
+
+    // Step any active drone missions through their lifecycle
+    const updatedMissions = { ...currentState.missions };
+
+    const updatedDrones = { ...currentState.drones };
+    const droneLogs: any[] = [];
+
+    Object.keys(updatedMissions).forEach((mId) => {
+      const mission = updatedMissions[mId];
+      if (mission.status !== 'AVAILABLE') {
+        const drone = updatedDrones[mission.droneId];
+        if (drone) {
+          const { updatedMission, updatedDrone, newLog } = stepDroneMission(mission, drone, timestamp);
+          updatedMissions[mId] = updatedMission;
+          updatedDrones[drone.id] = updatedDrone;
+          if (newLog) droneLogs.push(newLog);
+
+          // If mission completed or verified, sync outcome to associated incident
+          if (updatedMission.verificationOutcome && updatedIncidents[updatedMission.incidentId]) {
+            updatedIncidents[updatedMission.incidentId] = {
+              ...updatedIncidents[updatedMission.incidentId],
+              status: 'UNDER_INVESTIGATION',
+              verificationOutcome: updatedMission.verificationOutcome,
+              updatedAt: timestamp,
+            };
+          }
+        }
+      }
+    });
+
+    const combinedLogs = [...droneLogs, ...newLogs];
+
     setState((prev) => ({
       ...prev,
       lastTickTimestamp: timestamp,
       sensorNodes: updatedNodes,
       villages: updatedVillages,
       incidents: updatedIncidents,
-      eventLogs: newLogs.length > 0 ? [...newLogs, ...prev.eventLogs] : prev.eventLogs,
-      // Drones and missions remain intact
+      missions: updatedMissions,
+      drones: updatedDrones,
+      eventLogs: combinedLogs.length > 0 ? [...combinedLogs, ...prev.eventLogs] : prev.eventLogs,
     }));
   }, []);
+
 
 
   // Timer loop with speed control and leak prevention
@@ -326,6 +378,132 @@ export const NetworkProvider: React.FC<{ children: React.ReactNode }> = ({ child
     }));
   };
 
+  const dispatchDrone = (incidentId: string, preferredDroneId?: string): boolean => {
+    const currentState = stateRef.current;
+    const incident = currentState.incidents[incidentId];
+    if (!incident) return false;
+
+    // Pick specified drone or best available
+    let drone = preferredDroneId ? currentState.drones[preferredDroneId] : null;
+    if (!drone || drone.status !== 'AVAILABLE' || drone.currentMissionId) {
+      drone = selectBestAvailableDrone(currentState.drones);
+    }
+
+    if (!drone) {
+      alert('No UAVs currently available or battery insufficient (<25%). Mission queued.');
+      return false;
+    }
+
+    const targetVillage = currentState.villages[incident.villageId];
+    const targetCoords = targetVillage ? targetVillage.coordinates : drone.baseCoordinates;
+    const distanceKm = calculateHaversineDistanceKm(drone.baseCoordinates, targetCoords);
+    const timestamp = new Date().toISOString();
+
+    const mission = createDroneMission(drone, incident, targetCoords, distanceKm, timestamp);
+
+    const log: EventLogEntry = {
+      id: `LOG-DISPATCH-${Date.now()}`,
+      timestamp,
+      category: 'DRONE',
+      severity: 'INFO',
+      title: `Sortie Authorized: ${mission.id}`,
+      description: `${drone.callsign} (${drone.id}) dispatched to ${incident.villageName} (${distanceKm} km). Estimated flight time: ${(distanceKm / drone.speedKmh * 60).toFixed(1)} mins.`,
+      incidentId: incident.id,
+      droneId: drone.id,
+    };
+
+    setState((prev) => ({
+      ...prev,
+      drones: {
+        ...prev.drones,
+        [drone.id]: {
+          ...drone,
+          status: 'MISSION_ASSIGNED',
+          currentMissionId: mission.id,
+        },
+      },
+      missions: {
+        ...prev.missions,
+        [mission.id]: mission,
+      },
+      incidents: {
+        ...prev.incidents,
+        [incidentId]: {
+          ...incident,
+          status: 'DRONE_REQUESTED',
+          assignedDroneId: drone.id,
+          assignedMissionId: mission.id,
+          updatedAt: timestamp,
+        },
+      },
+      eventLogs: [log, ...prev.eventLogs],
+    }));
+
+    return true;
+  };
+
+  const abortMission = (missionId: string) => {
+    setState((prev) => {
+      const mission = prev.missions[missionId];
+      if (!mission) return prev;
+      const drone = prev.drones[mission.droneId];
+      if (!drone) return prev;
+
+      const timestamp = new Date().toISOString();
+      const { updatedMission, updatedDrone, log } = abortOrReturnDroneMission(mission, drone, timestamp);
+
+      return {
+        ...prev,
+        missions: {
+          ...prev.missions,
+          [missionId]: updatedMission,
+        },
+        drones: {
+          ...prev.drones,
+          [drone.id]: updatedDrone,
+        },
+        eventLogs: [log, ...prev.eventLogs],
+      };
+    });
+  };
+
+  const advanceMission = (missionId: string) => {
+    setState((prev) => {
+      const mission = prev.missions[missionId];
+      if (!mission || mission.status === 'AVAILABLE') return prev;
+      const drone = prev.drones[mission.droneId];
+      if (!drone) return prev;
+
+      const timestamp = new Date().toISOString();
+      const { updatedMission, updatedDrone, newLog } = stepDroneMission(mission, drone, timestamp);
+
+      const updatedIncidents = { ...prev.incidents };
+      if (updatedMission.verificationOutcome && updatedIncidents[updatedMission.incidentId]) {
+        updatedIncidents[updatedMission.incidentId] = {
+          ...updatedIncidents[updatedMission.incidentId],
+          status: 'UNDER_INVESTIGATION',
+          verificationOutcome: updatedMission.verificationOutcome,
+          updatedAt: timestamp,
+        };
+      }
+
+      return {
+        ...prev,
+        missions: {
+          ...prev.missions,
+          [missionId]: updatedMission,
+        },
+        drones: {
+          ...prev.drones,
+          [drone.id]: updatedDrone,
+        },
+        incidents: updatedIncidents,
+        eventLogs: newLog ? [newLog, ...prev.eventLogs] : prev.eventLogs,
+      };
+    });
+  };
+
+
   return (
     <NetworkContext.Provider
       value={{
@@ -343,9 +521,14 @@ export const NetworkProvider: React.FC<{ children: React.ReactNode }> = ({ child
         acknowledgeIncident,
         resolveIncident,
         addIncidentNote,
+
         updateThresholds,
+        dispatchDrone,
+        abortMission,
+        advanceMission,
       }}
     >
+
       {children}
     </NetworkContext.Provider>
   );

@@ -191,17 +191,17 @@ export interface Incident {
 }
 
 
-// 6. Drone Operations Model
-export interface Drone {
-  id: string; // e.g. "DRONE-01"
-  callsign: string;
-  baseCoordinates: Coordinates;
-  currentCoordinates: Coordinates;
-  status: DroneStatus;
-  batteryPercentage: number;
-  currentMissionId: string | null;
-  speedKmh: number;
-  totalMissionsCompleted: number;
+export interface DroneMissionReport {
+  missionId: string;
+  incidentId: string;
+  targetVillage: string;
+  assignedDrone: string;
+  dispatchTime: string;
+  simulatedArrivalTime: string;
+  verificationResult: VerificationOutcome | string;
+  missionDuration: string;
+  finalStatus: string;
+  operatorNotes: string;
 }
 
 export interface DroneMission {
@@ -213,6 +213,7 @@ export interface DroneMission {
   targetCoordinates: Coordinates;
   routeCoordinates: Coordinates[]; // path from base to target
   status: DroneStatus;
+  progressPercent: number;
   startTime: string;
   estimatedArrivalTime: string | null;
   actualArrivalTime: string | null;
@@ -222,7 +223,23 @@ export interface DroneMission {
   priority: 'HIGH' | 'CRITICAL';
   verificationOutcome: VerificationOutcome | null;
   operatorNotes: string;
+  report?: DroneMissionReport;
 }
+
+// 6. Drone Operations Model
+export interface Drone {
+  id: string; // e.g. "DRONE-01"
+  callsign: string;
+  baseCoordinates: Coordinates;
+  currentCoordinates: Coordinates;
+  status: DroneStatus;
+  batteryPercentage: number;
+  currentMissionId: string | null;
+  speedKmh: number;
+  totalMissionsCompleted: number;
+  missionHistory: string[]; // mission IDs
+}
+
 
 // 7. Event Log Model
 export interface EventLogEntry {

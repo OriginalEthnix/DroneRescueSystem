@@ -249,6 +249,7 @@ export const INITIAL_DRONES: Record<string, Drone> = {
     currentMissionId: null,
     speedKmh: 65,
     totalMissionsCompleted: 3,
+    missionHistory: [],
   },
   'DRONE-02': {
     id: 'DRONE-02',
@@ -260,8 +261,10 @@ export const INITIAL_DRONES: Record<string, Drone> = {
     currentMissionId: null,
     speedKmh: 70,
     totalMissionsCompleted: 5,
+    missionHistory: [],
   },
 };
+
 
 export const INITIAL_EVENT_LOGS: EventLogEntry[] = [
   {

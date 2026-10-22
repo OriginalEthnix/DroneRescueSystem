@@ -6,7 +6,9 @@ import { OverviewPage } from './components/overview/OverviewPage';
 import { LiveMonitoringPage } from './components/monitoring/LiveMonitoringPage';
 import { GeographicIntelligencePage } from './components/map/GeographicIntelligencePage';
 import { IncidentManagementPage } from './components/incidents/IncidentManagementPage';
+import { DroneOperationsPage } from './components/drones/DroneOperationsPage';
 import { SectionPlaceholder } from './components/common/SectionPlaceholder';
+
 
 
 
@@ -26,20 +28,8 @@ export const AppContent: React.FC = () => {
         return <IncidentManagementPage />;
 
       case 'drones':
-        return (
-          <SectionPlaceholder
-            sectionKey="drones"
-            title="Autonomous Drone Operations Center"
-            subtitle="Fleet telemetry, mission assignment, simulated pre-flight checks, and aerial verification."
-            milestone="Scheduled: Session 3"
-            plannedFeatures={[
-              'DRONE-01 and DRONE-02 real-time fleet cards (Battery, Speed, Sortie count)',
-              '10-stage mission state machine (Takeoff -> En Route -> Verification -> Return)',
-              'Interactive Dispatch Confirmation modal with ETA and distance estimation',
-              'Simulated aerial verification outcome generation (HAZARD CONFIRMED, etc.)'
-            ]}
-          />
-        );
+        return <DroneOperationsPage />;
+
       case 'analytics':
         return (
           <SectionPlaceholder
