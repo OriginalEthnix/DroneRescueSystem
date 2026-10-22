@@ -3,8 +3,7 @@ import {
   selectBestAvailableDrone, 
   createDroneMission, 
   stepDroneMission, 
-  abortOrReturnDroneMission,
-  NEXT_MISSION_STATUS_MAP
+  abortOrReturnDroneMission
 } from '../droneMissionService';
 import { INITIAL_DRONES, INITIAL_VILLAGES } from '../../constants/initialState';
 import type { Incident } from '../../types';

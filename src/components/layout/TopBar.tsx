@@ -14,7 +14,11 @@ import {
 import { useNetwork } from '../../context/useNetwork';
 
 
-export const TopBar: React.FC = () => {
+interface TopBarProps {
+  onOpenDemo?: () => void;
+}
+
+export const TopBar: React.FC<TopBarProps> = ({ onOpenDemo }) => {
   const { 
     state, 
     toggleSimulation, 
@@ -54,6 +58,17 @@ export const TopBar: React.FC = () => {
               <Sparkles className="w-2.5 h-2.5" />
               <span>Simulation Mode</span>
             </span>
+
+            {onOpenDemo && (
+              <button
+                onClick={onOpenDemo}
+                className="inline-flex items-center space-x-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold tracking-wider uppercase bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-300 border border-cyan-500/40 transition-colors shadow-sm"
+                title="Launch Guided 12-Step Faculty Demonstration Runner"
+              >
+                <Sparkles className="w-2.5 h-2.5 text-cyan-400 animate-pulse" />
+                <span>Demo Runner</span>
+              </button>
+            )}
           </div>
           <p className="text-[11px] text-slate-400 font-normal">
             Real-Time Hazard Monitoring & Autonomous Drone Response

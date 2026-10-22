@@ -1,3 +1,4 @@
+import React, { useState } from 'react';
 import { useNetwork } from './context/useNetwork';
 
 import { Sidebar } from './components/layout/Sidebar';
@@ -7,13 +8,14 @@ import { LiveMonitoringPage } from './components/monitoring/LiveMonitoringPage';
 import { GeographicIntelligencePage } from './components/map/GeographicIntelligencePage';
 import { IncidentManagementPage } from './components/incidents/IncidentManagementPage';
 import { DroneOperationsPage } from './components/drones/DroneOperationsPage';
-import { SectionPlaceholder } from './components/common/SectionPlaceholder';
-
-
-
+import { AnalyticsPage } from './components/analytics/AnalyticsPage';
+import { ConfigurationPage } from './components/configuration/ConfigurationPage';
+import { EventLogPage } from './components/eventLog/EventLogPage';
+import { DemonstrationMode } from './components/scenarios/DemonstrationMode';
 
 export const AppContent: React.FC = () => {
   const { state } = useNetwork();
+  const [isDemoOpen, setIsDemoOpen] = useState<boolean>(false);
 
   const renderActiveSection = () => {
     switch (state.activeSection) {
@@ -23,58 +25,16 @@ export const AppContent: React.FC = () => {
         return <LiveMonitoringPage />;
       case 'geographic':
         return <GeographicIntelligencePage />;
-
       case 'incidents':
         return <IncidentManagementPage />;
-
       case 'drones':
         return <DroneOperationsPage />;
-
       case 'analytics':
-        return (
-          <SectionPlaceholder
-            sectionKey="analytics"
-            title="Environmental Telemetry Analytics"
-            subtitle="Long-term trend analysis, multi-sensor correlations, and village risk benchmarking."
-            milestone="Scheduled: Session 4"
-            plannedFeatures={[
-              'Recharts multi-series historical trend charts (Temperature, Humidity, Vibration)',
-              'LiDAR distance delta tracking and proximity hazard analysis',
-              'Cross-village risk index comparison bar charts',
-              'Drone response time distributions and sortie duration benchmarks'
-            ]}
-          />
-        );
+        return <AnalyticsPage />;
       case 'configuration':
-        return (
-          <SectionPlaceholder
-            sectionKey="configuration"
-            title="System Threshold & Risk Engine Configuration"
-            subtitle="Customizable hazard thresholds, scoring weights, and simulation engine parameters."
-            milestone="Scheduled: Session 4"
-            plannedFeatures={[
-              'Configurable temperature, humidity, LiDAR, and vibration thresholds',
-              'Risk engine weight adjustment sliders (0-100 normalization)',
-              'Drone automatic dispatch threshold cutoffs',
-              'Simulation tick rate and speed multipliers'
-            ]}
-          />
-        );
+        return <ConfigurationPage />;
       case 'event-log':
-        return (
-          <SectionPlaceholder
-            sectionKey="event-log"
-            title="Audit Trail & Chronological Event Log"
-            subtitle="Immutable operational event stream recording threshold breaches, drone flights, and resolutions."
-            milestone="Scheduled: Session 4"
-            plannedFeatures={[
-              'Chronological event stream with category tags (SENSOR, THRESHOLD, DRONE, SYSTEM)',
-              'Search and severity filtering',
-              'Export audit logs as formatted JSON or CSV files',
-              'Printable mission verification summaries'
-            ]}
-          />
-        );
+        return <EventLogPage />;
       default:
         return <OverviewPage />;
     }
@@ -88,7 +48,7 @@ export const AppContent: React.FC = () => {
       {/* Main Content Area */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         {/* TopBar with Header & Telemetry */}
-        <TopBar />
+        <TopBar onOpenDemo={() => setIsDemoOpen(true)} />
 
         {/* Scrollable Viewport */}
         <main className="flex-1 overflow-y-auto p-4 md:p-6 bg-slate-950/50">
@@ -97,6 +57,12 @@ export const AppContent: React.FC = () => {
           </div>
         </main>
       </div>
+
+      {/* Guided 12-Step Faculty Demonstration Runner */}
+      <DemonstrationMode
+        isOpen={isDemoOpen}
+        onClose={() => setIsDemoOpen(false)}
+      />
     </div>
   );
 };
