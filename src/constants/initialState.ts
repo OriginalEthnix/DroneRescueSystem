@@ -273,7 +273,7 @@ export const INITIAL_EVENT_LOGS: EventLogEntry[] = [
     category: 'SYSTEM',
     severity: 'INFO',
     title: 'Distributed Network Online',
-    description: 'Central Environmental Intelligence Monitoring initialized across 3 North Bihar sectors with 6 telemetry nodes.',
+    description: 'AI-Based Multi-Agent Swarm Robot System initialized across 3 North Bihar sectors with distributed telemetry nodes.',
   },
   {
     id: 'LOG-INIT-002',

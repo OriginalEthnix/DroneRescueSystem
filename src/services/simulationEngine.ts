@@ -53,56 +53,85 @@ const clamp = (val: number, min: number, max: number): number => {
 };
 
 /**
- * Coherently fluctuates a normal sensor node.
- * Strictly preserves the 27°C–28°C normal constraint unless an anomaly is active.
+ * Coherently fluctuates a sensor node during simulation clock ticks.
+ * Strictly preserves the 27°C–28°C normal constraint unless an anomaly is active on that node.
+ * For anomalous nodes, sustains the anomaly range so the scenario remains reproducible until reset.
  */
 export const stepNormalNode = (
   node: SensorNode,
   thresholds: ThresholdConfig,
   timestamp: string
 ): SensorNode => {
-  if (node.status === 'OFFLINE') {
+  if (node.status === 'OFFLINE' || node.isStale) {
     return {
       ...node,
+      status: 'OFFLINE',
       isStale: true,
+      signalQuality: 0,
+      latencyMs: 9999,
       lastUpdated: timestamp,
     };
   }
 
-  // 1. Temperature: Smooth bounded drift clamped strictly to 27.0°C - 28.0°C in normal conditions
+  // 1. Temperature: If anomalous (> warningMin), gently fluctuate within elevated range;
+  // otherwise strictly clamp within 27.0°C - 28.0°C normal baseline constraint.
   const currentTemp = node.sensors.temperature.value;
   const tempDelta = (Math.random() - 0.49) * 0.15; // smooth drift
-  const nextTemp = Number(clamp(currentTemp + tempDelta, 27.0, 28.0).toFixed(1));
+  let nextTemp: number;
+  if (currentTemp > thresholds.temperature.warningMin) {
+    nextTemp = Number(clamp(currentTemp + tempDelta, thresholds.temperature.warningMin + 0.2, 45.0).toFixed(1));
+  } else {
+    nextTemp = Number(clamp(currentTemp + tempDelta, 27.0, 28.0).toFixed(1));
+  }
   const tempStatus = evaluateSensorStatus('temperature', nextTemp, thresholds);
 
-  // 2. Humidity: Smooth bounded drift within 45% - 70% in normal conditions
+  // 2. Humidity: If anomalous (> warningMin), gently fluctuate in high humidity range;
+  // otherwise bounded drift within 48% - 68%.
   const currentHum = node.sensors.humidity.value;
   const humDelta = (Math.random() - 0.5) * 1.5;
-  const nextHum = Math.round(clamp(currentHum + humDelta, 48, 68));
+  let nextHum: number;
+  if (currentHum > thresholds.humidity.warningMin) {
+    nextHum = Math.round(clamp(currentHum + humDelta, thresholds.humidity.warningMin + 1, 98));
+  } else {
+    nextHum = Math.round(clamp(currentHum + humDelta, 48, 68));
+  }
   const humStatus = evaluateSensorStatus('humidity', nextHum, thresholds);
 
-  // 3. Motion: Occasional brief PIR event (5% probability)
+  // 3. Motion: If node has active anomaly or detected motion in scenario, higher chance of sustained trigger
   const hadMotion = node.sensors.motion.detected;
-  const motionTriggered = Math.random() < 0.05;
+  const isAnomalous = node.status === 'CRITICAL' || node.status === 'WARNING';
+  const motionTriggered = isAnomalous && hadMotion ? Math.random() < 0.85 : Math.random() < 0.05;
   const nextMotionCount = motionTriggered ? node.sensors.motion.detectionCount + 1 : node.sensors.motion.detectionCount;
   const nextLastDetectionTime = motionTriggered ? timestamp : node.sensors.motion.lastDetectionTime;
 
-  // 4. LiDAR Distance: Gradual subtle variation around baseline (~4.5m - 5.5m)
+  // 4. LiDAR Distance: If hazard proximity (< warningDistance), fluctuate around low distance;
+  // otherwise baseline ~4.2m - 5.8m.
   const currentLidar = node.sensors.lidar.value;
   const lidarDelta = (Math.random() - 0.5) * 0.08;
-  const nextLidar = Number(clamp(currentLidar + lidarDelta, 4.2, 5.8).toFixed(1));
+  let nextLidar: number;
+  if (currentLidar <= thresholds.lidar.warningDistance) {
+    nextLidar = Number(clamp(currentLidar + lidarDelta, 0.4, thresholds.lidar.warningDistance).toFixed(1));
+  } else {
+    nextLidar = Number(clamp(currentLidar + lidarDelta, 4.2, 5.8).toFixed(1));
+  }
   const lidarStatus = evaluateSensorStatus('lidar', nextLidar, thresholds);
 
-  // 5. Vibration: Baseline micro-tremors (0.02g - 0.06g)
+  // 5. Vibration: If critical or warning, fluctuate around elevated vibration;
+  // otherwise baseline micro-tremors (0.02g - 0.07g).
   const currentVib = node.sensors.vibration.value;
   const vibDelta = (Math.random() - 0.5) * 0.01;
-  const nextVib = Number(clamp(currentVib + vibDelta, 0.02, 0.07).toFixed(2));
+  let nextVib: number;
+  if (currentVib >= thresholds.vibration.warningG) {
+    nextVib = Number(clamp(currentVib + vibDelta, thresholds.vibration.warningG, 0.55).toFixed(2));
+  } else {
+    nextVib = Number(clamp(currentVib + vibDelta, 0.02, 0.07).toFixed(2));
+  }
   const vibStatus = evaluateSensorStatus('vibration', nextVib, thresholds);
 
   // RF signal & latency small fluctuations
   const nextSignal = Math.round(clamp(node.signalQuality + (Math.random() * 2 - 1), 85, 100));
   const nextLatency = Math.round(clamp(node.latencyMs + (Math.random() * 4 - 2), 35, 75));
-  // Very slow gradual battery discharge (0.01% every few steps)
+  // Very slow gradual battery discharge (0.005% every few steps)
   const nextBattery = Math.max(15, Number((node.batteryLevel - 0.005).toFixed(2)));
 
   // Bounded History Management
@@ -118,9 +147,14 @@ export const stepNormalNode = (
 
   const updatedHistory = [...node.history.slice(-(MAX_HISTORY_POINTS - 1)), newHistoryPoint];
 
+  // Derive node operational status
+  const hasCritical = tempStatus === 'CRITICAL' || humStatus === 'CRITICAL' || lidarStatus === 'CRITICAL' || vibStatus === 'CRITICAL';
+  const hasWarning = tempStatus === 'WARNING' || humStatus === 'WARNING' || lidarStatus === 'WARNING' || vibStatus === 'WARNING' || motionTriggered;
+  const operationalStatus = hasCritical ? 'CRITICAL' : hasWarning ? 'WARNING' : 'ONLINE';
+
   return {
     ...node,
-    status: 'ONLINE',
+    status: operationalStatus,
     isStale: false,
     lastSuccessfulTransmission: timestamp,
     lastUpdated: timestamp,

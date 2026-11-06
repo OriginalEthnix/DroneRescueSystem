@@ -14,12 +14,14 @@ import {
 import { useNetwork } from '../../context/useNetwork';
 import { DEFAULT_THRESHOLDS } from '../../constants/initialState';
 import type { ThresholdConfig } from '../../types';
+import { ResetConfirmationModal } from '../common/ResetConfirmationModal';
 
 export const ConfigurationPage: React.FC = () => {
   const { state, updateThresholds, resetSimulation } = useNetwork();
 
   const [formThresholds, setFormThresholds] = useState<ThresholdConfig>(state.thresholds);
   const [saveSuccess, setSaveSuccess] = useState<boolean>(false);
+  const [isResetModalOpen, setIsResetModalOpen] = useState<boolean>(false);
 
   const handleSave = () => {
     updateThresholds(formThresholds);
@@ -306,21 +308,26 @@ export const ConfigurationPage: React.FC = () => {
             </p>
           </div>
 
-          {/* Factory Reset Danger Zone */}
+          {/* System Reset Controls */}
           <div className="pt-2">
             <button
-              onClick={() => {
-                if (window.confirm('Wipe all local simulation history, reset drones, clear alerts, and restore fresh initial state?')) {
-                  resetSimulation();
-                }
-              }}
-              className="w-full py-2 px-3 rounded-lg bg-red-950/40 hover:bg-red-900/40 text-red-300 border border-red-500/40 text-xs font-mono font-bold transition-colors"
+              onClick={() => setIsResetModalOpen(true)}
+              className="w-full py-2 px-3 rounded-lg bg-red-950/40 hover:bg-red-900/40 text-red-300 border border-red-500/40 text-xs font-mono font-bold transition-colors flex items-center justify-center space-x-1.5 focus:outline-none focus:ring-2 focus:ring-red-500"
             >
-              Factory Reset Application LocalStorage
+              <RotateCcw className="w-3.5 h-3.5 text-red-400" />
+              <span>System Reset Options & Storage Wipe</span>
             </button>
           </div>
         </div>
       </div>
+
+      {/* Explicit Reset Confirmation Modal */}
+      <ResetConfirmationModal
+        isOpen={isResetModalOpen}
+        onClose={() => setIsResetModalOpen(false)}
+        onConfirmBaseline={() => resetSimulation('baseline')}
+        onConfirmFactory={() => resetSimulation('factory')}
+      />
     </div>
   );
 };

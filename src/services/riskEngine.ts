@@ -1,15 +1,18 @@
 import type { SensorNode, ThresholdConfig, RiskLevel } from '../types';
+import { evaluateMultiSensorCorrelations } from './correlationEngine';
+import type { CorrelationEvaluation } from './correlationEngine';
 
 export interface RiskEvaluationResult {
   score: number;
   level: RiskLevel;
   contributingFactors: string[];
+  activeCorrelations?: CorrelationEvaluation[];
 }
 
 /**
  * Deterministically computes an explainable risk score (0-100) based on real sensor telemetry.
- * Honors explicit individual rules (e.g. Critical LiDAR or Critical Vibration triggers elevated risk)
- * and multi-sensor compounding rules.
+ * Honors explicit individual rules (e.g. Critical LiDAR or Critical Vibration triggers elevated risk),
+ * multi-sensor correlation rules, and compounding rules.
  */
 export const calculateNodeRisk = (
   node: SensorNode,
@@ -19,7 +22,8 @@ export const calculateNodeRisk = (
     return {
       score: 50,
       level: 'WARNING',
-      contributingFactors: ['Telemetry Stale: Node offline or signal disconnected'],
+      contributingFactors: ['Telemetry Stale: Node offline or RF signal disconnected'],
+      activeCorrelations: [],
     };
   }
 
@@ -94,6 +98,13 @@ export const calculateNodeRisk = (
     factors.push(`Multi-sensor compounding: ${anomalyCount} concurrent hazard indicators detected`);
   }
 
+  // Multi-Sensor Correlation Evaluation (Explainable Demonstration Rules)
+  const activeCorrelations = evaluateMultiSensorCorrelations(node, thresholds);
+  activeCorrelations.forEach((rule) => {
+    baseScore += rule.scoreBonus;
+    factors.push(`[Correlation Rule] ${rule.name}: ${rule.summary} (+${rule.scoreBonus} Risk pts)`);
+  });
+
   // If no anomalies triggered
   if (factors.length === 0) {
     factors.push('All parameters within normal baseline limits');
@@ -117,5 +128,6 @@ export const calculateNodeRisk = (
     score: finalScore,
     level,
     contributingFactors: factors,
+    activeCorrelations,
   };
 };

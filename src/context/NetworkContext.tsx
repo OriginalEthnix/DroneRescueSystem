@@ -1,5 +1,5 @@
 import React, { createContext, useState, useEffect, useRef, useCallback } from 'react';
-import type { ApplicationState, NavigationSection, VillageId, SimulationScenarioId, SensorNode, ThresholdConfig, EventLogEntry } from '../types';
+import type { ApplicationState, NavigationSection, VillageId, SimulationScenarioId, SensorNode, ThresholdConfig, EventLogEntry, IncidentStatus } from '../types';
 
 
 
@@ -14,72 +14,57 @@ import {
   abortOrReturnDroneMission 
 } from '../services/droneMissionService';
 import { calculateHaversineDistanceKm } from '../services/geographicService';
-
-
-const STORAGE_KEY = 'BIHAR_DRONE_RESCUE_STATE_V1';
+import { 
+  runGreedyTaskAllocation, 
+  runHungarianTaskAllocation, 
+  type TaskAllocationResult 
+} from '../services/daa/taskAllocation';
+import type { Coordinates } from '../types';
+import { 
+  loadApplicationState, 
+  saveApplicationState, 
+  clearApplicationState, 
+  restoreSensorBaseline 
+} from '../services/persistenceService';
 
 interface NetworkContextValue {
   state: ApplicationState;
   setActiveSection: (section: NavigationSection) => void;
   toggleSimulation: () => void;
   setSimulationSpeed: (speed: number) => void;
-  resetSimulation: () => void;
+  resetSimulation: (mode?: 'baseline' | 'factory') => void;
   selectVillage: (id: VillageId | null) => void;
   selectNode: (id: string | null) => void;
   selectIncident: (id: string | null) => void;
-
   selectDrone: (id: string | null) => void;
   setScenario: (scenario: SimulationScenarioId, targetNodeId?: string) => void;
-
   toggleNodeOffline: (nodeId: string) => void;
   acknowledgeIncident: (incidentId: string) => void;
-
   resolveIncident: (incidentId: string, notes?: string) => void;
+  updateIncidentStatus: (incidentId: string, status: IncidentStatus, notes?: string) => void;
   addIncidentNote: (incidentId: string, note: string) => void;
-
   updateThresholds: (thresholds: Partial<ThresholdConfig>) => void;
   dispatchDrone: (incidentId: string, droneId?: string) => boolean;
   abortMission: (missionId: string) => void;
   advanceMission: (missionId: string) => void;
+  updateMissionNotes: (missionId: string, notes: string) => void;
+  executeSwarmAllocation: (algorithm: 'GREEDY' | 'HUNGARIAN_OPTIMAL') => TaskAllocationResult;
+  applySwarmAllocation: (algorithm: 'GREEDY' | 'HUNGARIAN_OPTIMAL') => number;
 }
-
-
 
 const NetworkContext = createContext<NetworkContextValue | null>(null);
 
 export const NetworkProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [state, setState] = useState<ApplicationState>(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEY);
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (parsed.villages && parsed.sensorNodes && parsed.drones) {
-          return {
-            ...parsed,
-            simulationRunning: false, // Default paused on fresh load for safety
-            activeSection: 'overview',
-          };
-        }
-      }
-    } catch (e) {
-      console.warn('Failed to restore saved network state, using clean defaults', e);
-    }
-    return INITIAL_APPLICATION_STATE;
-  });
+  const [state, setState] = useState<ApplicationState>(() => loadApplicationState());
 
   const stateRef = useRef(state);
   useEffect(() => {
     stateRef.current = state;
   }, [state]);
 
-
-  // Save changes to localStorage
+  // Save changes to localStorage with safe quota management
   useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-    } catch (e) {
-      console.error('Failed to persist network state to localStorage', e);
-    }
+    saveApplicationState(state);
   }, [state]);
 
   /**
@@ -207,16 +192,16 @@ export const NetworkProvider: React.FC<{ children: React.ReactNode }> = ({ child
     setState((prev) => ({ ...prev, simulationSpeed: speed }));
   };
 
-  const resetSimulation = () => {
-    try {
-      localStorage.removeItem(STORAGE_KEY);
-    } catch (e) {
-      console.error(e);
+  const resetSimulation = (mode: 'baseline' | 'factory' = 'baseline') => {
+    if (mode === 'factory') {
+      clearApplicationState();
+      setState({
+        ...INITIAL_APPLICATION_STATE,
+        lastTickTimestamp: new Date().toISOString(),
+      });
+    } else {
+      setState((prev) => restoreSensorBaseline(prev));
     }
-    setState({
-      ...INITIAL_APPLICATION_STATE,
-      lastTickTimestamp: new Date().toISOString(),
-    });
   };
 
   const selectVillage = (id: VillageId | null) => {
@@ -348,6 +333,25 @@ export const NetworkProvider: React.FC<{ children: React.ReactNode }> = ({ child
     });
   };
 
+  const updateIncidentStatus = (incidentId: string, status: IncidentStatus, notes?: string) => {
+    setState((prev) => {
+      const incident = prev.incidents[incidentId];
+      if (!incident) return prev;
+      const timestamp = new Date().toISOString();
+      return {
+        ...prev,
+        incidents: {
+          ...prev.incidents,
+          [incidentId]: {
+            ...incident,
+            status,
+            updatedAt: timestamp,
+            operatorNotes: notes ? [...incident.operatorNotes, notes] : incident.operatorNotes,
+          },
+        },
+      };
+    });
+  };
 
   const addIncidentNote = (incidentId: string, note: string) => {
 
@@ -362,6 +366,25 @@ export const NetworkProvider: React.FC<{ children: React.ReactNode }> = ({ child
             ...incident,
             operatorNotes: [...incident.operatorNotes, note],
             updatedAt: new Date().toISOString(),
+          },
+        },
+      };
+    });
+  };
+
+  const updateMissionNotes = (missionId: string, notes: string) => {
+    setState((prev) => {
+      const mission = prev.missions[missionId];
+      if (!mission) return prev;
+      const updatedReport = mission.report ? { ...mission.report, operatorNotes: notes } : undefined;
+      return {
+        ...prev,
+        missions: {
+          ...prev.missions,
+          [missionId]: {
+            ...mission,
+            operatorNotes: notes,
+            report: updatedReport,
           },
         },
       };
@@ -503,6 +526,33 @@ export const NetworkProvider: React.FC<{ children: React.ReactNode }> = ({ child
     });
   };
 
+  const executeSwarmAllocation = (algorithm: 'GREEDY' | 'HUNGARIAN_OPTIMAL'): TaskAllocationResult => {
+    const currentState = stateRef.current;
+    const villageCoordsMap: Record<string, Coordinates> = {};
+    Object.values(currentState.villages).forEach((v) => {
+      villageCoordsMap[v.id] = v.coordinates;
+    });
+
+    const drones = Object.values(currentState.drones);
+    const incidents = Object.values(currentState.incidents);
+
+    if (algorithm === 'GREEDY') {
+      return runGreedyTaskAllocation(drones, incidents, villageCoordsMap);
+    }
+    return runHungarianTaskAllocation(drones, incidents, villageCoordsMap);
+  };
+
+  const applySwarmAllocation = (algorithm: 'GREEDY' | 'HUNGARIAN_OPTIMAL'): number => {
+    const allocation = executeSwarmAllocation(algorithm);
+    if (allocation.assignments.length === 0) return 0;
+
+    let dispatchedCount = 0;
+    for (const assignment of allocation.assignments) {
+      const ok = dispatchDrone(assignment.incidentId, assignment.droneId);
+      if (ok) dispatchedCount++;
+    }
+    return dispatchedCount;
+  };
 
   return (
     <NetworkContext.Provider
@@ -520,12 +570,15 @@ export const NetworkProvider: React.FC<{ children: React.ReactNode }> = ({ child
         toggleNodeOffline,
         acknowledgeIncident,
         resolveIncident,
+        updateIncidentStatus,
         addIncidentNote,
-
         updateThresholds,
         dispatchDrone,
         abortMission,
         advanceMission,
+        updateMissionNotes,
+        executeSwarmAllocation,
+        applySwarmAllocation,
       }}
     >
 

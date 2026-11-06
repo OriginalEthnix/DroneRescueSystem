@@ -20,5 +20,88 @@ body {
   width: 100%;
   height: 100%;
   z-index: 10;
-  background: #111827;
+  background: #0b0f19;
 }
+
+/* Command-center tactical dark theme filter for OpenStreetMap background tiles */
+.leaflet-tile-pane {
+  filter: brightness(0.65) invert(1) contrast(2.8) hue-rotate(200deg) saturate(0.35);
+}
+
+/* Accessible focus ring utility */
+:focus-visible {
+  outline: 2px solid #06b6d4;
+  outline-offset: 2px;
+}
+
+/* Professional Print Stylesheet for Drone Mission Reports & Official Audits */
+@media print {
+  @page {
+    margin: 1.5cm;
+    size: auto;
+  }
+
+  body {
+    background-color: #ffffff !important;
+    color: #000000 !important;
+    font-size: 11pt !important;
+  }
+
+  /* Hide navigation, sidebars, headers, controls, and dialog backdrops */
+  aside,
+  header,
+  nav,
+  .no-print,
+  [data-no-print] {
+    display: none !important;
+  }
+
+  .leaflet-tile-pane {
+    filter: none !important;
+  }
+
+  /* Make modal content flow cleanly onto print canvas */
+  .fixed.inset-0 {
+    position: static !important;
+    background: transparent !important;
+    padding: 0 !important;
+    overflow: visible !important;
+  }
+
+  .printable-card,
+  .bg-slate-900,
+  .bg-slate-950 {
+    background: #ffffff !important;
+    color: #000000 !important;
+    border-color: #cbd5e1 !important;
+    box-shadow: none !important;
+  }
+
+  .text-slate-100,
+  .text-slate-200,
+  .text-slate-300,
+  .text-slate-400 {
+    color: #1e293b !important;
+  }
+
+  .text-cyan-400,
+  .text-cyan-300 {
+    color: #0369a1 !important;
+  }
+
+  .text-amber-400,
+  .text-amber-300 {
+    color: #b45309 !important;
+  }
+
+  .text-emerald-400,
+  .text-emerald-300 {
+    color: #15803d !important;
+  }
+
+  .text-red-400,
+  .text-red-300 {
+    color: #b91c1c !important;
+  }
+}
+

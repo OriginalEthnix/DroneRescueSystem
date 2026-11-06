@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { 
   Plane, 
   Battery, 
@@ -7,11 +7,17 @@ import {
   CheckCircle, 
   FastForward, 
   ChevronRight,
-  FileCheck
+  FileCheck,
+  Download,
+  Cpu,
+  GitBranch,
+  Compass
 } from 'lucide-react';
 import { useNetwork } from '../../context/useNetwork';
 import type { DroneStatus, DroneMissionReport } from '../../types';
-
+import { exportMissionsToCSV, exportMissionsToJSON } from '../../services/exportService';
+import { calculateHaversineDistanceKm, calculateFlightEtaMinutes } from '../../services/geographicService';
+import { MissionReportModal } from './MissionReportModal';
 
 export const DroneOperationsPage: React.FC = () => {
   const { 
@@ -20,12 +26,14 @@ export const DroneOperationsPage: React.FC = () => {
     abortMission, 
     advanceMission, 
     setActiveSection,
-    resolveIncident
+    updateMissionNotes,
+    applySwarmAllocation
   } = useNetwork();
 
-  const [selectedIncidentForDispatch, setSelectedIncidentForDispatch] = React.useState<string | null>(null);
-  const [selectedDroneForDispatch, setSelectedDroneForDispatch] = React.useState<string | undefined>(undefined);
-  const [activeReportModal, setActiveReportModal] = React.useState<DroneMissionReport | null>(null);
+  const [selectedIncidentForDispatch, setSelectedIncidentForDispatch] = useState<string | null>(null);
+  const [selectedDroneForDispatch, setSelectedDroneForDispatch] = useState<string | undefined>(undefined);
+  const [activeReportModal, setActiveReportModal] = useState<DroneMissionReport | null>(null);
+  const [swarmNotice, setSwarmNotice] = useState<string | null>(null);
 
   const drones = Object.values(state.drones);
   const missions = Object.values(state.missions);
@@ -66,6 +74,16 @@ export const DroneOperationsPage: React.FC = () => {
     ? state.incidents[selectedIncidentForDispatch] 
     : null;
 
+  const targetVillage = candidateIncident ? state.villages[candidateIncident.villageId] : null;
+  const targetDrone = selectedDroneForDispatch 
+    ? state.drones[selectedDroneForDispatch] 
+    : availableDrones[0] || drones[0];
+  const targetCoords = targetVillage ? targetVillage.coordinates : targetDrone?.baseCoordinates;
+  const calculatedDistanceKm = targetCoords && targetDrone
+    ? calculateHaversineDistanceKm(targetDrone.baseCoordinates, targetCoords)
+    : 0;
+  const calculatedEtaMinutes = calculateFlightEtaMinutes(calculatedDistanceKm, targetDrone?.speedKmh || 65);
+
   return (
     <div className="space-y-6">
       {/* Top Banner */}
@@ -73,21 +91,50 @@ export const DroneOperationsPage: React.FC = () => {
         <div>
           <div className="flex items-center space-x-2">
             <Plane className="w-5 h-5 text-cyan-400" />
-            <h2 className="text-xl font-bold text-slate-100">Autonomous Drone Operations Command</h2>
+            <h2 className="text-xl font-bold text-slate-100">Autonomous Swarm Drone Operations Command</h2>
           </div>
           <p className="text-slate-400 text-xs mt-1">
-            Simulated aerial reconnaissance fleet based at Darbhanga Command Hub. 11-stage mission state machine, real-time telemetry, and simulated aerial verifications.
+            Simulated multi-agent aerial reconnaissance swarm based at Darbhanga Command Hub. Reinforcement learning pathing, 11-stage mission state machine, real-time telemetry, and aerial verifications.
           </p>
         </div>
 
-        {/* Fleet KPI Pills */}
-        <div className="flex items-center space-x-2 font-mono text-xs bg-slate-950/80 p-2.5 rounded-lg border border-slate-800">
-          <span className="text-slate-400">UAV Fleet:</span>
-          <span className="text-indigo-400 font-bold">{drones.length} Total</span>
-          <span className="text-slate-600">|</span>
-          <span className="text-emerald-400 font-bold">{availableDrones.length} Available</span>
-          <span className="text-slate-600">|</span>
-          <span className="text-cyan-400 font-bold">{activeMissions.length} Active Sorties</span>
+        {/* Fleet KPI Pills & Mission Data Exports */}
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="flex items-center space-x-2 font-mono text-xs bg-slate-950/80 p-2.5 rounded-lg border border-slate-800">
+            <span className="text-slate-400">UAV Fleet:</span>
+            <span className="text-indigo-400 font-bold">{drones.length} Total</span>
+            <span className="text-slate-600">|</span>
+            <span className="text-emerald-400 font-bold">{availableDrones.length} Avail</span>
+            <span className="text-slate-600">|</span>
+            <span className="text-cyan-400 font-bold">{activeMissions.length} Sorties</span>
+          </div>
+
+          <div className="flex items-center space-x-1.5">
+            <button
+              onClick={() => setActiveSection('ai-algorithms')}
+              className="px-3 py-2 rounded-lg bg-purple-950/80 hover:bg-purple-900/80 text-purple-300 text-xs font-semibold flex items-center space-x-1.5 border border-purple-500/40 transition-colors shadow-sm"
+              title="Open AI & DAA Algorithms Command Center"
+            >
+              <Cpu className="w-3.5 h-3.5 text-purple-400" />
+              <span>AI & DAA Workbench</span>
+            </button>
+            <button
+              onClick={() => exportMissionsToCSV(missions)}
+              className="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold flex items-center space-x-1.5 border border-slate-700 transition-colors shadow-sm"
+              title="Export all drone missions as RFC 4180 CSV"
+            >
+              <Download className="w-3.5 h-3.5 text-cyan-400" />
+              <span>CSV</span>
+            </button>
+            <button
+              onClick={() => exportMissionsToJSON(missions)}
+              className="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold flex items-center space-x-1.5 border border-slate-700 transition-colors shadow-sm"
+              title="Export all drone missions as formatted JSON"
+            >
+              <Download className="w-3.5 h-3.5 text-indigo-400" />
+              <span>JSON</span>
+            </button>
+          </div>
         </div>
       </div>
 
@@ -172,6 +219,19 @@ export const DroneOperationsPage: React.FC = () => {
                         <span>Phase: <strong className="text-cyan-400">{activeMission.status}</strong></span>
                       </div>
 
+                      {/* DAA Pathfinding Details */}
+                      {activeMission.pathfindingDetails && (
+                        <div className="bg-slate-950/70 p-2 rounded border border-cyan-900/40 text-[10px] font-mono text-cyan-300 flex justify-between items-center">
+                          <span className="flex items-center space-x-1">
+                            <Compass className="w-3 h-3 text-cyan-400" />
+                            <span>Path: {activeMission.pathfindingDetails.algorithm} Search</span>
+                          </span>
+                          <span className="text-slate-400">
+                            {activeMission.pathfindingDetails.expandedNodes} nodes expanded ({activeMission.pathfindingDetails.executionTimeMs} ms)
+                          </span>
+                        </div>
+                      )}
+
                       {/* Mission Manual Advance & Abort Buttons */}
                       <div className="flex items-center space-x-2 pt-2 border-t border-cyan-900/40">
                         <button
@@ -231,10 +291,32 @@ export const DroneOperationsPage: React.FC = () => {
               Hazards with Critical Severity or Risk Score &ge; 60/100 qualify for autonomous reconnaissance dispatch.
             </p>
           </div>
-          <span className="px-2 py-0.5 rounded bg-slate-800 text-slate-300 font-mono text-xs">
-            {eligibleIncidents.length} Pending
-          </span>
+          <div className="flex items-center space-x-2">
+            {eligibleIncidents.length > 0 && availableDrones.length > 0 && (
+              <button
+                onClick={() => {
+                  const dispatched = applySwarmAllocation('HUNGARIAN_OPTIMAL');
+                  setSwarmNotice(`Swarm Task Allocator dispatched ${dispatched} optimal UAV sorties!`);
+                  setTimeout(() => setSwarmNotice(null), 4000);
+                }}
+                className="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-mono text-xs font-bold flex items-center space-x-1.5 shadow transition"
+              >
+                <GitBranch className="w-3.5 h-3.5" />
+                <span>Swarm Auto-Allocate (DAA Hungarian)</span>
+              </button>
+            )}
+            <span className="px-2 py-1 rounded bg-slate-800 text-slate-300 font-mono text-xs">
+              {eligibleIncidents.length} Pending
+            </span>
+          </div>
         </div>
+
+        {swarmNotice && (
+          <div className="p-3 bg-emerald-950/80 border border-emerald-500/50 rounded-xl text-emerald-300 text-xs font-mono flex items-center space-x-2">
+            <CheckCircle className="w-4 h-4 text-emerald-400 shrink-0" />
+            <span>{swarmNotice}</span>
+          </div>
+        )}
 
         {eligibleIncidents.length === 0 ? (
           <div className="p-8 text-center bg-slate-950/60 border border-slate-800 rounded-lg text-slate-500 text-xs font-mono">
@@ -363,11 +445,11 @@ export const DroneOperationsPage: React.FC = () => {
               </div>
               <div>
                 <span className="text-slate-500 text-[10px] uppercase block">Est. Distance from Base</span>
-                <span className="text-slate-200 font-bold">~65 km</span>
+                <span className="text-slate-200 font-bold">{calculatedDistanceKm} km</span>
               </div>
               <div>
-                <span className="text-slate-500 text-[10px] uppercase block">Est. Time of Arrival (ETA)</span>
-                <span className="text-slate-200 font-bold">~60 mins</span>
+                <span className="text-slate-500 text-[10px] uppercase block">Est. Flight Duration (ETA)</span>
+                <span className="text-slate-200 font-bold">~{calculatedEtaMinutes} mins</span>
               </div>
             </div>
 
@@ -426,99 +508,12 @@ export const DroneOperationsPage: React.FC = () => {
       )}
 
       {/* Mission Summary Report Modal (Master Prompt Feature 5) */}
-      {activeReportModal && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-slate-800 rounded-xl max-w-xl w-full p-6 space-y-4 shadow-2xl relative">
-            <div className="flex justify-between items-start pb-3 border-b border-slate-800">
-              <div>
-                <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-400 font-bold border border-emerald-500/40">
-                  OFFICIAL UAV SORTIE REPORT
-                </span>
-                <h3 className="font-bold font-mono text-base text-slate-100 mt-1">
-                  Mission Summary: {activeReportModal.missionId}
-                </h3>
-              </div>
-              <button 
-                onClick={() => setActiveReportModal(null)}
-                className="text-slate-400 hover:text-slate-100 font-bold"
-              >
-                ✕
-              </button>
-            </div>
-
-            {/* 10 Required Report Fields */}
-            <div className="grid grid-cols-2 gap-3 text-xs font-mono bg-slate-950/80 p-3.5 rounded-lg border border-slate-800">
-              <div>
-                <span className="text-slate-500 text-[10px] uppercase block">Mission ID</span>
-                <span className="text-slate-200 font-bold">{activeReportModal.missionId}</span>
-              </div>
-              <div>
-                <span className="text-slate-500 text-[10px] uppercase block">Incident ID</span>
-                <span className="text-cyan-400 font-bold">{activeReportModal.incidentId}</span>
-              </div>
-              <div>
-                <span className="text-slate-500 text-[10px] uppercase block">Target Village Sector</span>
-                <span className="text-slate-200 font-bold">{activeReportModal.targetVillage}</span>
-              </div>
-              <div>
-                <span className="text-slate-500 text-[10px] uppercase block">Assigned UAV</span>
-                <span className="text-slate-200 font-bold">{activeReportModal.assignedDrone}</span>
-              </div>
-              <div>
-                <span className="text-slate-500 text-[10px] uppercase block">Dispatch Time</span>
-                <span className="text-slate-300">{new Date(activeReportModal.dispatchTime).toLocaleTimeString()}</span>
-              </div>
-              <div>
-                <span className="text-slate-500 text-[10px] uppercase block">Simulated Arrival Time</span>
-                <span className="text-slate-300">{new Date(activeReportModal.simulatedArrivalTime).toLocaleTimeString()}</span>
-              </div>
-              <div>
-                <span className="text-slate-500 text-[10px] uppercase block">Total Duration</span>
-                <span className="text-slate-200 font-bold">{activeReportModal.missionDuration}</span>
-              </div>
-              <div>
-                <span className="text-slate-500 text-[10px] uppercase block">Final Sortie Status</span>
-                <span className="text-emerald-400 font-bold">{activeReportModal.finalStatus}</span>
-              </div>
-            </div>
-
-            {/* Verification Result Callout */}
-            <div className="p-3 bg-purple-950/40 border border-purple-500/40 rounded-lg text-xs">
-              <span className="text-purple-300 font-bold block mb-1">Simulated Aerial Observation Outcome:</span>
-              <p className="font-mono text-purple-200 font-bold text-sm">{activeReportModal.verificationResult}</p>
-            </div>
-
-            {/* Operator Notes */}
-            <div className="text-xs">
-              <span className="text-slate-400 font-semibold uppercase text-[10px] block mb-1">Operator Log Notes:</span>
-              <p className="p-2.5 rounded bg-slate-950 border border-slate-800 text-slate-300 font-mono text-[11px]">
-                {activeReportModal.operatorNotes}
-              </p>
-            </div>
-
-            {/* Modal Actions */}
-            <div className="pt-3 border-t border-slate-800 flex items-center justify-between">
-              <button
-                onClick={() => {
-                  resolveIncident(activeReportModal.incidentId, `Resolved based on aerial sortie verification: ${activeReportModal.verificationResult}`);
-                  setActiveReportModal(null);
-                }}
-                className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold flex items-center space-x-1"
-              >
-                <CheckCircle className="w-3.5 h-3.5" />
-                <span>Mark Incident Resolved</span>
-              </button>
-
-              <button
-                onClick={() => setActiveReportModal(null)}
-                className="px-4 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium"
-              >
-                Close Report
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <MissionReportModal
+        report={activeReportModal}
+        isOpen={!!activeReportModal}
+        onClose={() => setActiveReportModal(null)}
+        onSaveNotes={(missionId, notes) => updateMissionNotes(missionId, notes)}
+      />
     </div>
   );
 };

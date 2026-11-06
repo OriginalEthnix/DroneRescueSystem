@@ -281,9 +281,9 @@ export const DemonstrationMode: React.FC<DemonstrationModeProps> = ({ isOpen, on
         <div className="flex items-center space-x-2">
           <Sparkles className="w-4 h-4 text-cyan-400 animate-pulse" />
           <span className="text-xs font-bold uppercase tracking-wider text-cyan-300">
-            Guided Faculty Demonstration Runner
+            Guided Demonstration Runner — Multi-Agent Swarm Robot System
           </span>
-          <span className="text-[11px] text-slate-400">
+          <span className="text-[11px] text-slate-400 hidden sm:inline">
             (12 Master Workflow Steps)
           </span>
         </div>

@@ -62,10 +62,10 @@ export const GeographicIntelligencePage: React.FC = () => {
           <button
             onClick={() => setUseFallbackMap(!useFallbackMap)}
             className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-mono flex items-center space-x-1.5 border border-slate-700 transition-colors"
-            title="Toggle between live CartoDB OpenStreetMap tiles and high-contrast offline vector schematic"
+            title="Toggle between live OpenStreetMap tiles and high-contrast offline vector schematic"
           >
             <Layers className="w-3.5 h-3.5 text-cyan-400" />
-            <span>Map Mode: {useFallbackMap ? 'Schematic Fallback' : 'Live Dark Tiles'}</span>
+            <span>Map Mode: {useFallbackMap ? 'Schematic Fallback' : 'OpenStreetMap Tactical'}</span>
           </button>
         </div>
       </div>

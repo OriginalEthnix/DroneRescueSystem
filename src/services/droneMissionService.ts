@@ -9,8 +9,45 @@ import type {
   Incident 
 } from '../types';
 import { generateFlightWaypoints } from './geographicService';
+import { calculateAStarFlightRoute, DEFAULT_HAZARD_OBSTACLES } from './daa/pathfinding';
 
 let missionCounter = 1;
+
+/**
+ * Interpolates an arbitrary waypoint sequence into a target number of smooth flight waypoints.
+ */
+export const interpolateTrajectory = (coords: Coordinates[], steps: number = 20): Coordinates[] => {
+  if (coords.length < 2) return coords;
+  let totalDist = 0;
+  const segmentDists: number[] = [];
+  for (let i = 0; i < coords.length - 1; i++) {
+    const d = Math.hypot(coords[i + 1].lat - coords[i].lat, coords[i + 1].lng - coords[i].lng);
+    segmentDists.push(d);
+    totalDist += d;
+  }
+  if (totalDist === 0) return generateFlightWaypoints(coords[0], coords[coords.length - 1], steps);
+
+  const waypoints: Coordinates[] = [{ ...coords[0] }];
+  const stepDist = totalDist / steps;
+
+  for (let s = 1; s < steps; s++) {
+    const targetD = s * stepDist;
+    let accumulated = 0;
+    for (let i = 0; i < segmentDists.length; i++) {
+      if (accumulated + segmentDists[i] >= targetD || i === segmentDists.length - 1) {
+        const segFrac = segmentDists[i] === 0 ? 0 : (targetD - accumulated) / segmentDists[i];
+        waypoints.push({
+          lat: Number((coords[i].lat + (coords[i + 1].lat - coords[i].lat) * segFrac).toFixed(6)),
+          lng: Number((coords[i].lng + (coords[i + 1].lng - coords[i].lng) * segFrac).toFixed(6)),
+        });
+        break;
+      }
+      accumulated += segmentDists[i];
+    }
+  }
+  waypoints.push({ ...coords[coords.length - 1] });
+  return waypoints;
+};
 
 /**
  * 11-Stage Mission Lifecycle Transitions (Master Prompt Section 8):
@@ -66,7 +103,12 @@ export const createDroneMission = (
   timestamp: string = new Date().toISOString()
 ): DroneMission => {
   const missionId = `MSN-${new Date().getFullYear()}-${String(missionCounter++).padStart(3, '0')}`;
-  const routeWaypoints = generateFlightWaypoints(drone.baseCoordinates, targetCoordinates, 20);
+  
+  // Calculate obstacle-avoiding trajectory using DAA A* Search Engine
+  const astar = calculateAStarFlightRoute(drone.baseCoordinates, targetCoordinates, DEFAULT_HAZARD_OBSTACLES);
+  const routeWaypoints = (astar.usedAStar && astar.waypoints.length >= 2)
+    ? interpolateTrajectory(astar.waypoints, 20)
+    : generateFlightWaypoints(drone.baseCoordinates, targetCoordinates, 20);
 
   return {
     id: missionId,
@@ -87,6 +129,13 @@ export const createDroneMission = (
     priority: incident.severity === 'CRITICAL' ? 'CRITICAL' : 'HIGH',
     verificationOutcome: null,
     operatorNotes: '',
+    pathfindingDetails: {
+      algorithm: astar.usedAStar ? 'A*' : 'Direct',
+      expandedNodes: astar.result.expandedNodes,
+      executionTimeMs: astar.result.executionTimeMs,
+      cost: astar.result.cost,
+      avoidedHazards: DEFAULT_HAZARD_OBSTACLES.map((h) => h.name),
+    },
   };
 };
 

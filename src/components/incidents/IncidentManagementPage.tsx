@@ -10,16 +10,21 @@ import {
   MapPin, 
   Plus, 
   Eye, 
-  ArrowUpDown
+  ArrowUpDown,
+  Download,
+  GitBranch
 } from 'lucide-react';
 import { useNetwork } from '../../context/useNetwork';
 import type { Incident, AlertSeverity, IncidentStatus } from '../../types';
+import { exportIncidentsToCSV, exportIncidentsToJSON } from '../../services/exportService';
+import { PrioritizationExplanationModal } from './PrioritizationExplanationModal';
 
 export const IncidentManagementPage: React.FC = () => {
   const { 
     state, 
     acknowledgeIncident, 
     resolveIncident, 
+    updateIncidentStatus,
     addIncidentNote, 
     setActiveSection,
     selectVillage
@@ -33,6 +38,7 @@ export const IncidentManagementPage: React.FC = () => {
   
   // Incident Detail Modal State
   const [activeModalIncident, setActiveModalIncident] = useState<Incident | null>(null);
+  const [prioritizingIncident, setPrioritizingIncident] = useState<Incident | null>(null);
   const [newNote, setNewNote] = useState('');
 
   const incidents = Object.values(state.incidents);
@@ -106,18 +112,47 @@ export const IncidentManagementPage: React.FC = () => {
           </p>
         </div>
 
-        {/* Priority Legend Badge */}
-        <div className="flex items-center space-x-2 text-xs font-mono bg-slate-950/80 p-2.5 rounded-lg border border-slate-800">
-          <span className="text-slate-400">Total Incidents:</span>
-          <span className="text-slate-100 font-bold">{incidents.length}</span>
-          <span className="text-slate-600">|</span>
-          <span className="text-red-400 font-bold">
-            {incidents.filter((i) => i.severity === 'CRITICAL' && i.status !== 'RESOLVED').length} Critical
-          </span>
-          <span className="text-slate-600">|</span>
-          <span className="text-emerald-400 font-bold">
-            {incidents.filter((i) => i.status === 'RESOLVED').length} Resolved
-          </span>
+        {/* Priority Legend Badge & Export Buttons */}
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="flex items-center space-x-2 text-xs font-mono bg-slate-950/80 p-2.5 rounded-lg border border-slate-800">
+            <span className="text-slate-400">Total:</span>
+            <span className="text-slate-100 font-bold">{incidents.length}</span>
+            <span className="text-slate-600">|</span>
+            <span className="text-red-400 font-bold">
+              {incidents.filter((i) => i.severity === 'CRITICAL' && i.status !== 'RESOLVED').length} Critical
+            </span>
+            <span className="text-slate-600">|</span>
+            <span className="text-emerald-400 font-bold">
+              {incidents.filter((i) => i.status === 'RESOLVED').length} Resolved
+            </span>
+          </div>
+
+          <div className="flex items-center space-x-1.5">
+            <button
+              onClick={() => setActiveSection('ai-algorithms')}
+              className="px-3 py-2 rounded-lg bg-indigo-950/80 hover:bg-indigo-900/80 text-indigo-300 text-xs font-semibold flex items-center space-x-1.5 border border-indigo-500/40 transition-colors shadow-sm"
+              title="Open DAA Swarm Task Allocation Benchmarking Engine"
+            >
+              <GitBranch className="w-3.5 h-3.5 text-indigo-400" />
+              <span>Swarm Allocator (DAA)</span>
+            </button>
+            <button
+              onClick={() => exportIncidentsToCSV(filtered)}
+              className="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold flex items-center space-x-1.5 border border-slate-700 transition-colors shadow-sm"
+              title="Export filtered incidents as RFC 4180 CSV"
+            >
+              <Download className="w-3.5 h-3.5 text-cyan-400" />
+              <span>CSV</span>
+            </button>
+            <button
+              onClick={() => exportIncidentsToJSON(filtered)}
+              className="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold flex items-center space-x-1.5 border border-slate-700 transition-colors shadow-sm"
+              title="Export filtered incidents as formatted JSON"
+            >
+              <Download className="w-3.5 h-3.5 text-indigo-400" />
+              <span>JSON</span>
+            </button>
+          </div>
         </div>
       </div>
 
@@ -214,8 +249,28 @@ export const IncidentManagementPage: React.FC = () => {
             <tbody className="divide-y divide-slate-800/60 font-sans">
               {sorted.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="py-12 text-center text-slate-500 font-mono">
-                    No matching incidents found.
+                  <td colSpan={8} className="py-14 text-center">
+                    <div className="flex flex-col items-center justify-center space-y-2.5 max-w-sm mx-auto">
+                      <CheckCircle className="w-9 h-9 text-emerald-400/70" />
+                      <p className="text-sm font-semibold text-slate-200">No Incidents Matching Active Criteria</p>
+                      <p className="text-xs text-slate-400 leading-relaxed">
+                        {search || severityFilter !== 'ALL' || statusFilter !== 'ALL'
+                          ? 'No incidents match your current filter or search parameters. Clear filters to view all records.'
+                          : 'All monitored North Bihar sectors are nominal. No active threshold violations detected.'}
+                      </p>
+                      {(search || severityFilter !== 'ALL' || statusFilter !== 'ALL') && (
+                        <button
+                          onClick={() => {
+                            setSearch('');
+                            setSeverityFilter('ALL');
+                            setStatusFilter('ALL');
+                          }}
+                          className="mt-2 px-3.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-cyan-400 text-xs font-semibold border border-slate-700 transition-colors focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                        >
+                          Clear Filters
+                        </button>
+                      )}
+                    </div>
                   </td>
                 </tr>
               ) : (
@@ -269,9 +324,14 @@ export const IncidentManagementPage: React.FC = () => {
 
                       {/* Priority Score */}
                       <td className="py-3.5 px-3 text-center font-mono">
-                        <div className="inline-block px-2 py-0.5 rounded bg-slate-950 border border-slate-800 text-cyan-300 font-bold text-[11px]" title={inc.priorityExplanation}>
-                          {inc.priorityScore}
-                        </div>
+                        <button
+                          onClick={() => setPrioritizingIncident(inc)}
+                          className="inline-flex items-center space-x-1 px-2 py-0.5 rounded bg-slate-950 border border-slate-800 hover:border-cyan-500 text-cyan-300 font-bold text-[11px] transition-colors"
+                          title="Click to view detailed 5-criteria prioritization breakdown"
+                        >
+                          <span>{inc.priorityScore}</span>
+                          <ArrowUpDown className="w-2.5 h-2.5 text-cyan-400" />
+                        </button>
                       </td>
 
                       {/* Status Badge */}
@@ -469,6 +529,61 @@ export const IncidentManagementPage: React.FC = () => {
               </div>
             </div>
 
+            {/* Operator Status Decision Control (Mandatory Workflow Step 18) */}
+            <div className="p-3 bg-slate-950/80 border border-slate-800 rounded-lg flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+              <div className="flex items-center space-x-2">
+                <span className="text-slate-400 text-xs font-mono">Operational Status:</span>
+                <span className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold border ${getStatusBadge(activeModalIncident.status)}`}>
+                  {activeModalIncident.status}
+                </span>
+              </div>
+
+              <div className="flex items-center space-x-1.5 flex-wrap">
+                <span className="text-slate-500 text-[10px] uppercase font-mono">Transition:</span>
+                {activeModalIncident.status === 'ACTIVE' && (
+                  <button
+                    onClick={() => {
+                      acknowledgeIncident(activeModalIncident.id);
+                      setActiveModalIncident({ ...activeModalIncident, status: 'ACKNOWLEDGED' });
+                    }}
+                    className="px-2.5 py-1 rounded bg-amber-950 hover:bg-amber-900 text-amber-300 border border-amber-500/40 text-[11px] font-semibold transition-colors"
+                  >
+                    Acknowledge
+                  </button>
+                )}
+                {activeModalIncident.status !== 'UNDER_INVESTIGATION' && activeModalIncident.status !== 'RESOLVED' && (
+                  <button
+                    onClick={() => {
+                      updateIncidentStatus(activeModalIncident.id, 'UNDER_INVESTIGATION', 'Incident marked under investigation by field operator.');
+                      setActiveModalIncident({ ...activeModalIncident, status: 'UNDER_INVESTIGATION' });
+                    }}
+                    className="px-2.5 py-1 rounded bg-purple-950 hover:bg-purple-900 text-purple-300 border border-purple-500/40 text-[11px] font-semibold transition-colors"
+                  >
+                    Investigate
+                  </button>
+                )}
+                {activeModalIncident.status !== 'RESOLVED' && (
+                  <button
+                    onClick={() => {
+                      const notes = window.prompt(`Enter resolution notes for ${activeModalIncident.id}:`, 'Verified and resolved by field operator.');
+                      if (notes !== null) {
+                        resolveIncident(activeModalIncident.id, notes);
+                        setActiveModalIncident({ 
+                          ...activeModalIncident, 
+                          status: 'RESOLVED', 
+                          operatorNotes: [...activeModalIncident.operatorNotes, notes] 
+                        });
+                      }
+                    }}
+                    className="px-2.5 py-1 rounded bg-emerald-950 hover:bg-emerald-900 text-emerald-300 border border-emerald-500/40 text-[11px] font-semibold transition-colors flex items-center space-x-1"
+                  >
+                    <CheckCheck className="w-3 h-3 text-emerald-400" />
+                    <span>Resolve</span>
+                  </button>
+                )}
+              </div>
+            </div>
+
             {/* Modal Footer Controls */}
             <div className="pt-3 border-t border-slate-800 flex items-center justify-between">
               <button
@@ -508,6 +623,14 @@ export const IncidentManagementPage: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* Prioritization Explanation Breakdown Modal */}
+      <PrioritizationExplanationModal
+        incident={prioritizingIncident}
+        allIncidents={incidents}
+        isOpen={!!prioritizingIncident}
+        onClose={() => setPrioritizingIncident(null)}
+      />
     </div>
   );
 };

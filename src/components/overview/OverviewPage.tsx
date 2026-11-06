@@ -38,11 +38,11 @@ export const OverviewPage: React.FC = () => {
           <div>
             <div className="flex items-center space-x-2">
               <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse" />
-              <h2 className="text-xl font-bold text-slate-100 tracking-tight">Bihar Sector Command Center</h2>
+              <h2 className="text-xl font-bold text-slate-100 tracking-tight">Bihar Sector Swarm Command Center</h2>
             </div>
             <p className="text-slate-400 text-xs mt-1 max-w-2xl leading-relaxed">
-              Monitoring 3 rural districts (Darbhanga, Sitamarhi, Madhubani) with distributed multi-sensor environmental nodes. 
-              Integrated with rule-based automated risk telemetry and simulated autonomous drone aerial verification.
+              Monitoring 3 rural districts (Darbhanga, Sitamarhi, Madhubani) with distributed multi-sensor intelligence nodes. 
+              Integrated with reinforcement learning risk analytics and autonomous multi-agent swarm robot rescue dispatch.
             </p>
           </div>
           <div className="flex items-center space-x-3 shrink-0">
@@ -82,12 +82,16 @@ export const OverviewPage: React.FC = () => {
         <div className="bg-slate-900/80 border border-slate-800 p-3.5 rounded-xl">
           <div className="flex justify-between items-center text-slate-400 text-xs mb-1">
             <span>Online Nodes</span>
-            <span className="w-2 h-2 rounded-full bg-emerald-400" />
+            <span className={`w-2 h-2 rounded-full ${sensorNodes.some((n) => n.status === 'OFFLINE' || n.isStale) ? 'bg-amber-400' : 'bg-emerald-400'}`} />
           </div>
           <div className="text-xl font-bold font-mono text-emerald-400">
-            {sensorNodes.filter((n) => n.status === 'ONLINE').length}
+            {sensorNodes.filter((n) => n.status === 'ONLINE' && !n.isStale).length}
           </div>
-          <div className="text-[10px] text-slate-500 mt-0.5 font-mono">0 disconnected</div>
+          <div className="text-[10px] text-slate-500 mt-0.5 font-mono">
+            {sensorNodes.filter((n) => n.status === 'OFFLINE' || n.isStale).length > 0
+              ? `${sensorNodes.filter((n) => n.status === 'OFFLINE' || n.isStale).length} disconnected`
+              : 'All nodes connected'}
+          </div>
         </div>
 
         {/* Active Incidents */}

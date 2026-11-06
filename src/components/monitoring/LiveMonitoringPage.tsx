@@ -12,10 +12,12 @@ import {
   Battery,
   AlertTriangle,
   RotateCcw,
-  PowerOff
+  PowerOff,
+  Sparkles
 } from 'lucide-react';
 import { useNetwork } from '../../context/useNetwork';
 import type { SimulationScenarioId } from '../../types';
+import { ScenarioSimulatorModal } from '../scenarios/ScenarioSimulatorModal';
 
 export const LiveMonitoringPage: React.FC = () => {
   const { 
@@ -24,7 +26,7 @@ export const LiveMonitoringPage: React.FC = () => {
     toggleNodeOffline
   } = useNetwork();
 
-  
+  const [isSimModalOpen, setIsSimModalOpen] = React.useState(false);
   const [search, setSearch] = React.useState('');
   const [districtFilter, setDistrictFilter] = React.useState<string>('ALL');
 
@@ -67,15 +69,23 @@ export const LiveMonitoringPage: React.FC = () => {
 
           <div className="flex items-center space-x-2 shrink-0">
             <span className="text-xs font-mono text-slate-400">
-              Active Scenario: <span className="text-cyan-400 font-bold">{state.activeScenario}</span>
+              Active: <span className="text-cyan-400 font-bold">{state.activeScenario}</span>
             </span>
+            <button
+              onClick={() => setIsSimModalOpen(true)}
+              className="px-2.5 py-1.5 rounded-lg bg-purple-950/80 hover:bg-purple-900 text-purple-300 text-xs font-medium flex items-center space-x-1 border border-purple-500/40"
+              title="Open full scenario configuration & parameter contracts"
+            >
+              <Sparkles className="w-3 h-3 text-purple-400" />
+              <span>Configure (A–H)</span>
+            </button>
             <button
               onClick={() => setScenario('NORMAL')}
               className="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium flex items-center space-x-1 border border-slate-700"
               title="Reset all nodes back to normal baseline"
             >
               <RotateCcw className="w-3 h-3 text-cyan-400" />
-              <span>Reset to Normal</span>
+              <span>Reset</span>
             </button>
           </div>
         </div>
@@ -151,9 +161,24 @@ export const LiveMonitoringPage: React.FC = () => {
       </div>
 
       {/* Sensor Node Cards Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {nodes.map((node) => {
-          const isOffline = node.status === 'OFFLINE' || node.isStale;
+      {nodes.length === 0 ? (
+        <div className="bg-slate-900/80 border border-slate-800 rounded-xl p-12 text-center">
+          <Radio className="w-10 h-10 text-slate-600 mx-auto mb-3" />
+          <p className="text-slate-200 font-semibold text-sm">No Telemetry Nodes Match Your Filter</p>
+          <p className="text-slate-400 text-xs mt-1 max-w-sm mx-auto">
+            Try adjusting your search keyword or selecting "All Districts" to view all Bihar monitoring nodes.
+          </p>
+          <button
+            onClick={() => { setSearch(''); setDistrictFilter('ALL'); }}
+            className="mt-4 px-3.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-cyan-400 text-xs font-semibold border border-slate-700 transition-colors focus:outline-none focus:ring-2 focus:ring-cyan-500"
+          >
+            Reset Filters
+          </button>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {nodes.map((node) => {
+            const isOffline = node.status === 'OFFLINE' || node.isStale;
 
           return (
             <div
@@ -342,6 +367,13 @@ export const LiveMonitoringPage: React.FC = () => {
           );
         })}
       </div>
+      )}
+
+      {/* Scenario Simulator Configuration Modal */}
+      <ScenarioSimulatorModal
+        isOpen={isSimModalOpen}
+        onClose={() => setIsSimModalOpen(false)}
+      />
     </div>
   );
 };

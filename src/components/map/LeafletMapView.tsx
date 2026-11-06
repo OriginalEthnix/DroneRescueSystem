@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { 
   MapContainer, 
   TileLayer, 
@@ -17,6 +17,7 @@ import {
   createDroneMarkerIcon
 } from './mapUtils';
 import type { Village, SensorNode, Drone, DroneMission, Incident, VillageId } from '../../types';
+import { DEFAULT_HAZARD_OBSTACLES } from '../../services/daa/pathfinding';
 
 
 interface MapViewControllerProps {
@@ -63,23 +64,31 @@ export const LeafletMapView: React.FC<LeafletMapViewProps> = ({
   onSelectVillage,
   onSelectNode,
 }) => {
+  const [tileError, setTileError] = useState<boolean>(false);
   const selectedVillage = villages.find((v) => v.id === selectedVillageId) || null;
   const selectedNode = sensorNodes.find((n) => n.nodeId === selectedNodeId) || null;
 
   return (
-    <MapContainer
-      center={[BIHAR_MAP_CENTER.lat, BIHAR_MAP_CENTER.lng]}
-      zoom={BIHAR_DEFAULT_ZOOM}
-      scrollWheelZoom={true}
-      className="w-full h-full rounded-xl"
-      style={{ background: '#0b0f19' }}
-    >
-      {/* Dark Matter CartoDB / OpenStreetMap accessible tile layer */}
-      <TileLayer
-        attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/">CARTO</a>'
-        url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
-        maxZoom={19}
-      />
+    <div className="relative w-full h-full">
+      <MapContainer
+        center={[BIHAR_MAP_CENTER.lat, BIHAR_MAP_CENTER.lng]}
+        zoom={BIHAR_DEFAULT_ZOOM}
+        scrollWheelZoom={true}
+        className="w-full h-full rounded-xl"
+        style={{ background: '#0b0f19' }}
+      >
+        {/* Standard OpenStreetMap Accessible Tile Layer */}
+        <TileLayer
+          attribution='&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap</a> contributors'
+          url="https://tile.openstreetmap.org/{z}/{x}/{y}.png"
+          maxZoom={19}
+          eventHandlers={{
+            tileerror: (error) => {
+              console.warn('Leaflet TileLayer: OpenStreetMap tile load warning', error);
+              setTileError(true);
+            },
+          }}
+        />
 
       <MapViewController 
         selectedVillage={selectedVillage} 
@@ -113,6 +122,30 @@ export const LeafletMapView: React.FC<LeafletMapViewProps> = ({
       })}
 
       {/* 2. Mission Routes (Base -> Target Village/Node) */}
+      {/* Tactical DAA Hazard Obstacles (Flood / Storm No-Fly Zones for A* Avoidance) */}
+      {DEFAULT_HAZARD_OBSTACLES.map((haz) => (
+        <Circle
+          key={`hazard-${haz.id}`}
+          center={[haz.center.lat, haz.center.lng]}
+          radius={haz.radiusKm * 1000}
+          pathOptions={{
+            color: '#ef4444',
+            fillColor: '#b91c1c',
+            fillOpacity: 0.12,
+            dashArray: '4, 6',
+            weight: 1.5,
+          }}
+        >
+          <Popup className="custom-popup">
+            <div className="p-2 text-xs font-mono space-y-1">
+              <div className="font-bold text-red-400">DAA Hazard No-Fly Obstacle</div>
+              <div className="text-slate-200">{haz.name}</div>
+              <div className="text-slate-400 text-[10px]">Radius: {haz.radiusKm} km • Dynamic A* Avoidance Zone</div>
+            </div>
+          </Popup>
+        </Circle>
+      ))}
+
       {missions
         .filter((m) => m.status !== 'AVAILABLE')
         .map((m) => {
@@ -232,5 +265,18 @@ export const LeafletMapView: React.FC<LeafletMapViewProps> = ({
         </Marker>
       ))}
     </MapContainer>
+
+      {/* Graceful Tile Error Notification Banner */}
+      {tileError && (
+        <div 
+          role="status"
+          aria-live="polite"
+          className="absolute top-3 right-14 z-[400] bg-amber-950/90 border border-amber-500/50 text-amber-200 px-3 py-1.5 rounded-lg text-xs font-mono shadow-lg flex items-center space-x-2 backdrop-blur-sm pointer-events-auto"
+        >
+          <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse shrink-0" />
+          <span>Map tile connectivity degraded. Tactical markers & routes remain active.</span>
+        </div>
+      )}
+    </div>
   );
 };

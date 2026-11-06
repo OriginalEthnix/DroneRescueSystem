@@ -5,49 +5,120 @@ import type {
   AlertSeverity, 
   EventLogEntry, 
   Village, 
-  Drone
+  Drone,
+  PriorityBreakdown
 } from '../types';
 
 let incidentCounter = 1;
 
 /**
- * Prioritize an incident based on severity, risk score, age, and available drone assets.
+ * Prioritize an incident based on all 5 criteria (Master Prompt Feature 4):
+ * 1. Severity (Critical, Warning, Info)
+ * 2. Risk score (0-100)
+ * 3. Number of affected nodes in village/sector
+ * 4. Age of the unresolved incident
+ * 5. Drone mission availability
+ * Plus multi-sensor correlation bonuses.
  */
 export const calculateIncidentPriority = (
   severity: AlertSeverity,
   riskScore: number,
   createdAt: string,
-  drones: Record<string, Drone>
-): { score: number; explanation: string } => {
-  let score = riskScore;
-  const factors: string[] = [];
+  drones: Record<string, Drone>,
+  affectedNodesCount: number = 1,
+  correlationsCount: number = 0
+): { score: number; explanation: string; breakdown: PriorityBreakdown } => {
+  const factors: { label: string; score: number; detail: string }[] = [];
 
+  // 1. Severity Score
+  let severityScore = 0;
   if (severity === 'CRITICAL') {
-    score += 50;
-    factors.push('Critical Severity (+50)');
+    severityScore = 50;
+    factors.push({ label: 'Severity Bonus', score: 50, detail: 'CRITICAL alert status (+50)' });
   } else if (severity === 'WARNING') {
-    score += 20;
-    factors.push('Warning Severity (+20)');
-  }
-
-  // Age factor: older unresolved incidents gain slight urgency
-  const ageMinutes = Math.floor((Date.now() - new Date(createdAt).getTime()) / 60000);
-  if (ageMinutes > 5) {
-    score += Math.min(15, ageMinutes * 2);
-    factors.push(`Unresolved for ${ageMinutes}m (+${Math.min(15, ageMinutes * 2)})`);
-  }
-
-  // Asset availability factor
-  const availableDrones = Object.values(drones).filter((d) => d.status === 'AVAILABLE').length;
-  if (availableDrones > 0) {
-    factors.push(`${availableDrones} Aerial drone(s) available for immediate sortie`);
+    severityScore = 20;
+    factors.push({ label: 'Severity Bonus', score: 20, detail: 'WARNING alert status (+20)' });
   } else {
-    factors.push('Drone fleet currently committed to other sectors');
+    severityScore = 5;
+    factors.push({ label: 'Severity Bonus', score: 5, detail: 'INFORMATIONAL alert status (+5)' });
   }
+
+  // 2. Risk Score Direct Component
+  const riskScoreComponent = Math.round(riskScore);
+  factors.push({ label: 'Calculated Risk', score: riskScoreComponent, detail: `Baseline risk index: ${riskScoreComponent}/100 (+${riskScoreComponent})` });
+
+  // 3. Number of Affected Nodes in Village/Sector
+  let affectedNodesScore = 0;
+  if (affectedNodesCount > 1) {
+    affectedNodesScore = Math.min(30, (affectedNodesCount - 1) * 15);
+    factors.push({
+      label: 'Multi-Node Sector Hazard',
+      score: affectedNodesScore,
+      detail: `${affectedNodesCount} nodes currently anomalous in sector (+${affectedNodesScore})`,
+    });
+  }
+
+  // 4. Age of Incident (unresolved duration urgency)
+  const ageMinutes = Math.max(0, Math.floor((Date.now() - new Date(createdAt).getTime()) / 60000));
+  let ageScore = 0;
+  if (ageMinutes > 0) {
+    ageScore = Math.min(20, ageMinutes * 2);
+    factors.push({
+      label: 'Unresolved Duration',
+      score: ageScore,
+      detail: `Unresolved for ${ageMinutes}m (+${ageScore})`,
+    });
+  }
+
+  // 5. Fleet / Mission Readiness
+  const availableDrones = Object.values(drones).filter((d) => d.status === 'AVAILABLE').length;
+  let fleetReadinessScore = 0;
+  if (availableDrones > 0) {
+    fleetReadinessScore = 10;
+    factors.push({
+      label: 'UAV Standby Readiness',
+      score: 10,
+      detail: `${availableDrones} UAV(s) available for immediate dispatch (+10)`,
+    });
+  } else {
+    fleetReadinessScore = 0;
+    factors.push({
+      label: 'UAV Standby Readiness',
+      score: 0,
+      detail: 'Fleet committed; sortie queued (+0)',
+    });
+  }
+
+  // 6. Multi-Sensor Correlation Bonus
+  let correlationScore = 0;
+  if (correlationsCount > 0) {
+    correlationScore = Math.min(25, correlationsCount * 12);
+    factors.push({
+      label: 'Sensor Correlation Bonus',
+      score: correlationScore,
+      detail: `${correlationsCount} cross-sensor correlation rules active (+${correlationScore})`,
+    });
+  }
+
+  const totalScore = severityScore + riskScoreComponent + affectedNodesScore + ageScore + fleetReadinessScore + correlationScore;
+  const explanationSummary = factors.map((f) => `${f.label}: +${f.score}`).join(' • ');
+
+  const breakdown: PriorityBreakdown = {
+    totalScore,
+    severityScore,
+    riskScoreComponent,
+    affectedNodesScore,
+    ageScore,
+    fleetReadinessScore,
+    correlationScore,
+    summary: explanationSummary,
+    factors,
+  };
 
   return {
-    score,
-    explanation: factors.join(' • '),
+    score: totalScore,
+    explanation: explanationSummary,
+    breakdown,
   };
 };
 
@@ -159,8 +230,22 @@ export const processAlertsForNodes = (
         (inc) => inc.nodeId === node.nodeId && inc.status !== 'RESOLVED'
       );
 
+      const affectedInVillage = Object.values(nodes).filter(
+        (n) => n.villageId === node.villageId && (n.status === 'WARNING' || n.status === 'CRITICAL' || n.riskScore >= 40)
+      ).length;
+
+      const correlationFactors = node.contributingFactors.filter((f) => f.includes('[Correlation Rule]'));
+      const correlationsCount = correlationFactors.length;
+
       const dispatchEligible = triggerSeverity === 'CRITICAL' || node.riskScore >= thresholds.riskScoring.droneDispatchThreshold;
-      const priority = calculateIncidentPriority(triggerSeverity, node.riskScore, existingActive ? existingActive.createdAt : timestamp, drones);
+      const priority = calculateIncidentPriority(
+        triggerSeverity, 
+        node.riskScore, 
+        existingActive ? existingActive.createdAt : timestamp, 
+        drones,
+        affectedInVillage,
+        correlationsCount
+      );
 
       if (existingActive) {
         // Update the existing uninterrupted incident (refresh score and latest trigger values without creating a duplicate)
@@ -175,6 +260,8 @@ export const processAlertsForNodes = (
           dispatchEligible,
           priorityScore: priority.score,
           priorityExplanation: priority.explanation,
+          priorityBreakdown: priority.breakdown,
+          correlations: correlationFactors,
         };
       } else {
         // Genuinely new or recurred incident
@@ -200,6 +287,8 @@ export const processAlertsForNodes = (
           dispatchEligible,
           priorityScore: priority.score,
           priorityExplanation: priority.explanation,
+          priorityBreakdown: priority.breakdown,
+          correlations: correlationFactors,
           assignedDroneId: null,
           assignedMissionId: null,
           verificationOutcome: null,

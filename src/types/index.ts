@@ -1,4 +1,4 @@
-// Centralized TypeScript Type Definitions for Distributed Environmental Intelligence Network
+// Centralized TypeScript Type Definitions for AI-Based Multi-Agent Swarm Robot System for Autonomous Disaster and Rescue Using Reinforcement Learning
 
 export type VillageId = 'VILLAGE-A' | 'VILLAGE-B' | 'VILLAGE-C';
 
@@ -163,6 +163,24 @@ export interface ThresholdConfig {
   speedMultiplier: number;
 }
 
+export interface PriorityFactor {
+  label: string;
+  score: number;
+  detail: string;
+}
+
+export interface PriorityBreakdown {
+  totalScore: number;
+  severityScore: number;
+  riskScoreComponent: number;
+  affectedNodesScore: number;
+  ageScore: number;
+  fleetReadinessScore: number;
+  correlationScore: number;
+  summary: string;
+  factors: PriorityFactor[];
+}
+
 // 5. Incident Model
 export interface Incident {
   id: string; // e.g. "INC-2026-001"
@@ -184,6 +202,8 @@ export interface Incident {
   dispatchEligible: boolean;
   priorityScore: number;
   priorityExplanation: string;
+  priorityBreakdown?: PriorityBreakdown;
+  correlations?: string[];
   assignedDroneId: string | null;
   assignedMissionId: string | null;
   verificationOutcome: VerificationOutcome | null;
@@ -202,6 +222,14 @@ export interface DroneMissionReport {
   missionDuration: string;
   finalStatus: string;
   operatorNotes: string;
+}
+
+export interface DroneMissionPathfinding {
+  algorithm: 'A*' | 'Dijkstra' | 'Direct';
+  expandedNodes: number;
+  executionTimeMs: number;
+  cost: number;
+  avoidedHazards: string[];
 }
 
 export interface DroneMission {
@@ -224,6 +252,7 @@ export interface DroneMission {
   verificationOutcome: VerificationOutcome | null;
   operatorNotes: string;
   report?: DroneMissionReport;
+  pathfindingDetails?: DroneMissionPathfinding;
 }
 
 // 6. Drone Operations Model
@@ -262,9 +291,11 @@ export type NavigationSection =
   | 'geographic' 
   | 'incidents' 
   | 'drones' 
+  | 'ai-algorithms'
   | 'analytics' 
   | 'configuration' 
-  | 'event-log';
+  | 'event-log'
+  | 'drone-simulator';
 
 // 9. Global State Envelope
 export interface ApplicationState {
